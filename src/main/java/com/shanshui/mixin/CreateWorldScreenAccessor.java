@@ -1,4 +1,4 @@
-package com.tbpro.mixin;
+package com.shanshui.mixin;
 
 import com.mojang.datafixers.util.Pair;
 import net.minecraft.client.gui.screens.worldselection.CreateWorldScreen;
@@ -16,8 +16,8 @@ import java.util.function.Consumer;
 @Mixin(CreateWorldScreen.class)
 public interface CreateWorldScreenAccessor {
     @Invoker("getDataPackSelectionSettings")
-    Pair<Path, PackRepository> tbpro$getDataPackSelectionSettings(WorldDataConfiguration config);
+    Pair<Path, PackRepository> shanshui$getDataPackSelectionSettings(WorldDataConfiguration config);
 
     @Invoker("tryApplyNewDataPacks")
-    void tbpro$tryApplyNewDataPacks(PackRepository repository, boolean requireSelected, Consumer<WorldDataConfiguration> onReload);
+    void shanshui$tryApplyNewDataPacks(PackRepository repository, boolean requireSelected, Consumer<WorldDataConfiguration> onReload);
 }

@@ -1,6 +1,6 @@
 {
   "required": true,
-  "package": "com.tbpro.mixin",
+  "package": "com.shanshui.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
     "CreateWorldScreenMixin",

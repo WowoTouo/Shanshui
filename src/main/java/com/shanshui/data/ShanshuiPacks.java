@@ -1,7 +1,7 @@
-package com.tbpro.data;
+package com.shanshui.data;
 
-import com.tbpro.TbproUI;
-import com.tbpro.settings.TbproSettings;
+import com.shanshui.ShanshuiUI;
+import com.shanshui.settings.ShanshuiSettings;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -15,7 +15,7 @@ import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
 /**
- * TBPRO 数据包生成器：对应 UTF 的 PresetPacks。
+ * Shanshui 数据包生成器：对应 UTF 的 PresetPacks。
  * 把模板（zz_hybrid_scheduler v3）按参数替换占位符，打包成 zip 数据包。
  * 模板结构（与 v3 一致）：
  *   pack.mcmeta
@@ -24,11 +24,11 @@ import java.util.zip.ZipOutputStream;
  *   data/minecraft/dimension_type/overworld.json       {{worldHeight}}/{{worldDepth}}
  *   data/minecraft/worldgen/noise_settings/overworld.json {{seaLevel}}/{{worldDepth}}
  */
-public class TbproPacks {
-    public static final String PACK_PREFIX = "tbpro-preset";
+public class ShanshuiPacks {
+    public static final String PACK_PREFIX = "shanshui-preset";
 
     /** 参数 JSON → SHA-1 前 12 位 → 数据包文件名（同 PresetApplier.packName）。 */
-    public static String packName(TbproSettings settings) {
+    public static String packName(ShanshuiSettings settings) {
         String json = settings.serialize();
         try {
             java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-1");
@@ -43,30 +43,30 @@ public class TbproPacks {
         }
     }
 
-    public static boolean isTbproPack(String packId) {
+    public static boolean isShanshuiPack(String packId) {
         return packId.startsWith("file/" + PACK_PREFIX) && packId.endsWith(".zip");
     }
 
     /** 生成数据包 zip 到目标路径。 */
-    public static void export(TbproSettings settings, Path zip) throws IOException {
-        Path workDir = Files.createTempDirectory("tbpro-preset-");
+    public static void export(ShanshuiSettings settings, Path zip) throws IOException {
+        Path workDir = Files.createTempDirectory("shanshui-preset-");
         try {
             Path generated = workDir.resolve("pack");
             renderTemplates(settings, generated);
             Path parent = zip.toAbsolutePath().getParent();
             Files.createDirectories(parent);
-            Path partial = Files.createTempFile(parent, "tbpro-preset-", ".zip.tmp");
+            Path partial = Files.createTempFile(parent, "shanshui-preset-", ".zip.tmp");
             Files.delete(partial);
             zipDirectory(generated, partial);
             Files.move(partial, zip, StandardCopyOption.REPLACE_EXISTING);
         } finally {
             deleteRecursive(workDir);
         }
-        TbproUI.LOGGER.info("Wrote TBPRO preset datapack to {}", zip);
+        ShanshuiUI.LOGGER.info("Wrote Shanshui preset datapack to {}", zip);
     }
 
     /** 渲染模板：占位符替换 → 写入 generated 目录。 */
-    private static void renderTemplates(TbproSettings s, Path out) throws IOException {
+    private static void renderTemplates(ShanshuiSettings s, Path out) throws IOException {
         String[] entries = {
                 "pack.mcmeta",
                 "data/hybrid/worldgen/noise/region_mask.json",
@@ -125,7 +125,7 @@ public class TbproPacks {
     }
 
     private static String readResource(String path) throws IOException {
-        try (InputStream in = TbproPacks.class.getResourceAsStream(path)) {
+        try (InputStream in = ShanshuiPacks.class.getResourceAsStream(path)) {
             if (in == null) {
                 throw new IOException("Template not found: " + path);
             }
@@ -167,6 +167,6 @@ public class TbproPacks {
         }
     }
 
-    private TbproPacks() {
+    private ShanshuiPacks() {
     }
 }

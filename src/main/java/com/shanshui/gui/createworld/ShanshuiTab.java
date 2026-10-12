@@ -1,6 +1,6 @@
-package com.tbpro.gui.createworld;
+package com.shanshui.gui.createworld;
 
-import com.tbpro.settings.TbproSettings;
+import com.shanshui.settings.ShanshuiSettings;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
@@ -22,77 +22,77 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
- * TBPRO 地形调度标签页：对应 UTF 的 TerrainTab。
+ * Shanshui 地形调度标签页：对应 UTF 的 TerrainTab。
  * 左列参数控件（掩码频率/区块大小/B引擎占比/边界模式/海平面/世界高度），右侧预留预览区（M3 加入）。
  */
-public class TbproTab implements Tab {
+public class ShanshuiTab implements Tab {
     private static final int PADDING = 8;
     private static final int ROW = 20;
     private static final int GAP = 4;
 
     private final CreateWorldScreen screen;
-    private final TbproState state;
+    private final ShanshuiState state;
     private final StringWidget status;
     private final Button advancedButton;
     private final List<AbstractWidget> controls = new ArrayList<>();
     private final TabLayout layout = new TabLayout(this);
 
-    public TbproTab(CreateWorldScreen screen) {
+    public ShanshuiTab(CreateWorldScreen screen) {
         this.screen = screen;
-        this.state = TbproState.of(screen);
+        this.state = ShanshuiState.of(screen);
         Minecraft mc = Minecraft.getInstance();
 
         this.status = new StringWidget(Component.empty(), mc.font);
 
         this.advancedButton = Button.builder(
-                Component.translatable("tab.tbpro.advanced"),
-                b -> {}).tooltip(Tooltip.create(Component.translatable("tab.tbpro.advanced.tip"))).build();
+                Component.translatable("tab.shanshui.advanced"),
+                b -> {}).tooltip(Tooltip.create(Component.translatable("tab.shanshui.advanced.tip"))).build();
 
         rebuildControls();
     }
 
     private void rebuildControls() {
         controls.clear();
-        TbproSettings s = state.settings();
+        ShanshuiSettings s = state.settings();
 
         // 掩码频率滑块（0.0005 ~ 0.01，对数手感用线性近似）
         controls.add(new SimpleSlider(0, 0, 0, 20,
-                Component.translatable("tab.tbpro.freq"),
+                Component.translatable("tab.shanshui.freq"),
                 (double) ((s.maskFrequency() - 0.0005f) / 0.0095f),
-                v -> state.update(p -> new TbproSettings(
+                v -> state.update(p -> new ShanshuiSettings(
                         (float) (0.0005 + v * 0.0095), p.maskOctaves(), p.bShare(), p.boundary(), p.seaLevel(), p.worldHeight()))));
 
         // 区块大小（firstOctave 档）
         controls.add(CycleButton.<Integer>builder(SimpleSlider::clampLabelComponent, s.maskOctaves())
                 .withValues(-6, -5, -4, -3, -2)
-                .create(0, 0, 0, 20, Component.translatable("tab.tbpro.size"),
-                        (b, v) -> state.update(p -> new TbproSettings(p.maskFrequency(), v, p.bShare(), p.boundary(), p.seaLevel(), p.worldHeight()))));
+                .create(0, 0, 0, 20, Component.translatable("tab.shanshui.size"),
+                        (b, v) -> state.update(p -> new ShanshuiSettings(p.maskFrequency(), v, p.bShare(), p.boundary(), p.seaLevel(), p.worldHeight()))));
 
         // B 引擎占比滑块（0~1）
         controls.add(new SimpleSlider(0, 0, 0, 20,
-                Component.translatable("tab.tbpro.bshare"),
+                Component.translatable("tab.shanshui.bshare"),
                 s.bShare(),
-                v -> state.update(p -> new TbproSettings(p.maskFrequency(), p.maskOctaves(), v.floatValue(), p.boundary(), p.seaLevel(), p.worldHeight()))));
+                v -> state.update(p -> new ShanshuiSettings(p.maskFrequency(), p.maskOctaves(), v.floatValue(), p.boundary(), p.seaLevel(), p.worldHeight()))));
 
         // 边界模式
-        controls.add(CycleButton.<TbproSettings.BoundaryMode>builder(b -> Component.literal(b.label), s.boundary())
-                .withValues(TbproSettings.BoundaryMode.values())
-                .create(0, 0, 0, 20, Component.translatable("tab.tbpro.boundary"),
-                        (b, v) -> state.update(p -> new TbproSettings(p.maskFrequency(), p.maskOctaves(), p.bShare(), v, p.seaLevel(), p.worldHeight()))));
+        controls.add(CycleButton.<ShanshuiSettings.BoundaryMode>builder(b -> Component.literal(b.label), s.boundary())
+                .withValues(ShanshuiSettings.BoundaryMode.values())
+                .create(0, 0, 0, 20, Component.translatable("tab.shanshui.boundary"),
+                        (b, v) -> state.update(p -> new ShanshuiSettings(p.maskFrequency(), p.maskOctaves(), p.bShare(), v, p.seaLevel(), p.worldHeight()))));
 
         // 海平面滑块（-64 ~ 128）
         controls.add(new SimpleSlider(0, 0, 0, 20,
-                Component.translatable("tab.tbpro.sea"),
+                Component.translatable("tab.shanshui.sea"),
                 (double) (s.seaLevel() + 64) / 192.0,
-                v -> state.update(p -> new TbproSettings(p.maskFrequency(), p.maskOctaves(), p.bShare(), p.boundary(), Mth.floor(v * 192.0) - 64, p.worldHeight()))));
+                v -> state.update(p -> new ShanshuiSettings(p.maskFrequency(), p.maskOctaves(), p.bShare(), p.boundary(), Mth.floor(v * 192.0) - 64, p.worldHeight()))));
 
         // 世界高度（固定显示 4064 兜底）
-        controls.add(new StringWidget(Component.translatable("tab.tbpro.height", s.worldHeight()), Minecraft.getInstance().font));
+        controls.add(new StringWidget(Component.translatable("tab.shanshui.height", s.worldHeight()), Minecraft.getInstance().font));
     }
 
     @Override
     public Component getTabTitle() {
-        return Component.literal("TBPRO");
+        return Component.literal("Shanshui");
     }
 
     @Override
@@ -147,11 +147,11 @@ public class TbproTab implements Tab {
     }
 
     private void updateLabels() {
-        TbproSettings s = state.settings();
+        ShanshuiSettings s = state.settings();
         if (state.active()) {
-            this.status.setMessage(Component.translatable("tab.tbpro.active", s.boundary().label));
+            this.status.setMessage(Component.translatable("tab.shanshui.active", s.boundary().label));
         } else {
-            this.status.setMessage(Component.translatable("tab.tbpro.inactive"));
+            this.status.setMessage(Component.translatable("tab.shanshui.inactive"));
         }
     }
 
@@ -191,9 +191,9 @@ public class TbproTab implements Tab {
 
     private class TabLayout implements Layout {
         private ScreenRectangle area;
-        final /* synthetic */ TbproTab this$0;
+        final /* synthetic */ ShanshuiTab this$0;
 
-        private TabLayout(TbproTab tab) {
+        private TabLayout(ShanshuiTab tab) {
             Objects.requireNonNull(tab);
             this.this$0 = tab;
             this.area = ScreenRectangle.empty();

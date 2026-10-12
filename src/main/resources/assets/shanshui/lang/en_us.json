@@ -1,0 +1,14 @@
+{
+  "tab.shanshui.title": "Terrain Scheduler",
+  "tab.shanshui.advanced": "Advanced",
+  "tab.shanshui.advanced.tip": "Advanced engine partition config (WIP)",
+  "tab.shanshui.active": "Shanshui active · %s",
+  "tab.shanshui.inactive": "Shanshui inactive (vanilla)",
+  "tab.shanshui.freq": "Mask frequency",
+  "tab.shanshui.size": "Region size",
+  "tab.shanshui.bshare": "Engine B (mountain) share",
+  "tab.shanshui.boundary": "Boundary mode",
+  "tab.shanshui.sea": "Sea level",
+  "tab.shanshui.height": "World height: %s",
+  "tab.shanshui.apply.failed": "Shanshui preset apply failed"
+}

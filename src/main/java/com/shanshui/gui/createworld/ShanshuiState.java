@@ -1,6 +1,6 @@
-package com.tbpro.gui.createworld;
+package com.shanshui.gui.createworld;
 
-import com.tbpro.settings.TbproSettings;
+import com.shanshui.settings.ShanshuiSettings;
 import net.minecraft.client.gui.screens.worldselection.CreateWorldScreen;
 import net.minecraft.client.gui.screens.worldselection.WorldCreationUiState;
 
@@ -8,28 +8,28 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * TBPRO 地形状态：持有当前参数集 + 修订号 + 待应用数据包列表。
+ * Shanshui 地形状态：持有当前参数集 + 修订号 + 待应用数据包列表。
  * 对应 UTF 的 TerrainState。
  */
-public class TbproState {
+public class ShanshuiState {
     public interface Holder {
-        TbproState tbpro$getState();
+        ShanshuiState shanshui$getState();
     }
 
     private final CreateWorldScreen screen;
     private final WorldCreationUiState uiState;
-    private TbproSettings settings = TbproSettings.DEFAULT;
+    private ShanshuiSettings settings = ShanshuiSettings.DEFAULT;
     private int revision;
     private boolean active = true;
     private List<String> pendingSelection;
 
-    public TbproState(CreateWorldScreen screen, WorldCreationUiState uiState) {
+    public ShanshuiState(CreateWorldScreen screen, WorldCreationUiState uiState) {
         this.screen = screen;
         this.uiState = uiState;
     }
 
-    public static TbproState of(CreateWorldScreen screen) {
-        return ((Holder) (Object) screen).tbpro$getState();
+    public static ShanshuiState of(CreateWorldScreen screen) {
+        return ((Holder) (Object) screen).shanshui$getState();
     }
 
     public CreateWorldScreen screen() {
@@ -40,13 +40,13 @@ public class TbproState {
         return this.uiState;
     }
 
-    public TbproSettings settings() {
+    public ShanshuiSettings settings() {
         return this.settings;
     }
 
     /** 参数变更入口：变更后 revision++，驱动界面刷新。 */
-    public void update(Consumer<TbproSettings> change) {
-        TbproSettings next = new TbproSettings(
+    public void update(Consumer<ShanshuiSettings> change) {
+        ShanshuiSettings next = new ShanshuiSettings(
                 this.settings.maskFrequency(),
                 this.settings.maskOctaves(),
                 this.settings.bShare(),

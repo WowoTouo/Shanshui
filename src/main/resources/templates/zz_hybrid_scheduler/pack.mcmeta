@@ -4,6 +4,6 @@
     "min_format": 1,
     "max_format": 999,
     "pack_format": 108,
-    "description": "TBPRO v4: 区块级区域调度 (掩码分区地形)"
+    "description": "Shanshui v5: 多引擎区块级区域调度 (掩码分区地形)"
   }
 }

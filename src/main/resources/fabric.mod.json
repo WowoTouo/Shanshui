@@ -1,20 +1,20 @@
 {
   "schemaVersion": 1,
-  "id": "tbpro",
+  "id": "shanshui",
   "version": "${version}",
-  "name": "TBPRO UI",
-  "description": "TBPRO 超级地形调度器界面 - 在创建世界界面配置多引擎分区地形（掩码频率/引擎比例/边界模式/海平面/世界高度）",
-  "authors": ["TBPRO"],
+  "name": "山水工程 Shanshui",
+  "description": "山水工程 Shanshui · 超级地形调度器 - 在创建世界界面配置多引擎分区地形（掩码频率/引擎比例/边界模式/海平面/世界高度）",
+  "authors": ["Shanshui"],
   "contact": {},
   "license": "GPL-3.0",
   "environment": "*",
   "entrypoints": {
     "client": [
-      "com.tbpro.TbproUI"
+      "com.shanshui.ShanshuiUI"
     ]
   },
   "mixins": [
-    "tbpro.mixins.json"
+    "shanshui.mixins.json"
   ],
   "depends": {
     "fabricloader": ">=0.19.5",

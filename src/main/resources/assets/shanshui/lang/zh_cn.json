@@ -1,0 +1,14 @@
+{
+  "tab.shanshui.title": "地形调度",
+  "tab.shanshui.advanced": "高级设置",
+  "tab.shanshui.advanced.tip": "引擎分区高级配置（开发中）",
+  "tab.shanshui.active": "Shanshui 已激活 · %s",
+  "tab.shanshui.inactive": "Shanshui 未激活（使用原版生成）",
+  "tab.shanshui.freq": "掩码频率",
+  "tab.shanshui.size": "区块大小",
+  "tab.shanshui.bshare": "B 引擎(山区)占比",
+  "tab.shanshui.boundary": "边界模式",
+  "tab.shanshui.sea": "海平面",
+  "tab.shanshui.height": "世界高度: %s",
+  "tab.shanshui.apply.failed": "Shanshui 预设应用失败"
+}
