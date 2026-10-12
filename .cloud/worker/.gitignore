@@ -1,0 +1,13 @@
+# ===== 凭据与隐私（永不进 git；根 .gitignore 的 .env 规则同样生效，此处双保险）=====
+.env
+*.env
+!.env.example
+.msmtprc
+!msmtprc-template
+
+# ===== 运行时产物（本地存档只需留脚本与报告）=====
+logs/
+tccli-out.tmp
+__pycache__/
+*.pyc
+.mailtest/

@@ -1,0 +1,22 @@
+# 山水工程 AI Worker sudo 白名单（2026-10-13）
+# 原则：只授予 AI 干活必需的 root 能力，任何删除/重启/配置类命令一律不给
+# 安装方式：/etc/sudoers.d/agent-worker，权限 0440
+
+# 包安装（仅 install，不含 remove/purge/autoremove）
+agent ALL=(root) NOPASSWD: /usr/bin/apt-get install *
+agent ALL=(root) NOPASSWD: /usr/bin/apt install *
+agent ALL=(root) NOPASSWD: /usr/bin/apt-get update
+agent ALL=(root) NOPASSWD: /usr/bin/apt update
+
+# 自身服务管理（仅 ai-worker，禁止 systemctl 其他任何目标）
+agent ALL=(root) NOPASSWD: /usr/bin/systemctl restart ai-worker
+agent ALL=(root) NOPASSWD: /usr/bin/systemctl start ai-worker
+agent ALL=(root) NOPASSWD: /usr/bin/systemctl stop ai-worker
+agent ALL=(root) NOPASSWD: /usr/bin/systemctl status ai-worker
+agent ALL=(root) NOPASSWD: /usr/bin/systemctl is-active ai-worker
+
+# 日志轮转
+agent ALL=(root) NOPASSWD: /usr/sbin/logrotate *
+
+# 注意：systemctl 的 reboot/poweroff/halt 已被 systemd 沙箱
+# （SystemCallFilter=@system-service）在内核层禁止，双保险

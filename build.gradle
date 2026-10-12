@@ -31,6 +31,7 @@ processResources {
 
 tasks.withType(JavaCompile).configureEach {
     it.options.encoding = "UTF-8"
+    it.options.release = 25   // 产物字节码目标 25（2026-10-13 三地统一 27 构建，向下兼容 MC 运行时/玩家侧）
 }
 
 java {
@@ -46,6 +47,8 @@ jar {
 // 让主进程 Java 与 toolchain 一致，避免 Loom 与 JDK 版本打架
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(25)
+        // 2026-10-13 三地统一：编译 toolchain 升 27（服务器 Zulu27.28+101 实测
+        // Gradle 9.8.1 官方支持 Java 27），产物经 --release 25 保持字节码兼容
+        languageVersion = JavaLanguageVersion.of(27)
     }
 }

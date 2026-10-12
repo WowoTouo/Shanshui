@@ -66,3 +66,9 @@ desktop.ini
 
 # ===== 本地配置 =====
 *.local
+
+# ===== 凭据（永不进 git：总工 2026-10-13 指令）=====
+.env
+*.env
+!.env.example
+.msmtprc

@@ -1,0 +1,18 @@
+# 山水工程 AI Worker · msmtp 配置（agent 家目录，600）
+# 用法：把下面两处改掉——
+#   1. account default 段的 from：你的邮箱地址（需与 .env 的 MAIL_FROM 一致）
+#   2. host：QQ 邮箱用 smtp.qq.com:465；163 用 smtp.163.com:465；Gmail 用 smtp.gmail.com:587 + tls_starttls on
+# 密码不在这里：passwordeval 从 ~/.env 读 MAIL_PASS（QQ/163 用「授权码」不是登录密码）
+
+defaults
+auth on
+tls on
+tls_trust_file /etc/ssl/certs/ca-certificates.crt
+logfile /home/agent/logs/msmtp.log
+
+account default
+host smtp.qq.com
+port 465
+tls_starttls off
+from YOUR_EMAIL_HERE
+passwordeval "grep -E '^MAIL_PASS=' /home/agent/.env | head -1 | cut -d= -f2-"

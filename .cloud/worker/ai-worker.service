@@ -1,0 +1,55 @@
+[Unit]
+Description=Shanshui AI Worker (unattended task loop)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agent
+Group=agent
+WorkingDirectory=/home/agent/worker
+ExecStart=/home/agent/worker/run_worker.sh
+
+# ========== 稳定性 ==========
+Restart=always
+RestartSec=15
+MemoryMax=1200M
+TasksMax=128
+RuntimeMaxSec=86400
+
+# ========== 第一层：内核级禁重启/禁内核破坏 ==========
+# CapabilityBoundingSet 清空 → 无 CAP_SYS_BOOT（重启）/CAP_SYS_ADMIN/CAP_NET_ADMIN 等一切特权
+CapabilityBoundingSet=
+# 系统调用过滤 → reboot/shutdown/mount/swapon/init_module 等直接 EPERM
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# 内核参数/模块/日志/cgroup 只读
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+# ========== 第二层：文件系统围栏 ==========
+# 注意：不用 ProtectHome=true——它遮蔽整个 /home 会连 ExecStart 入口一起藏掉
+#（ReadWritePaths 的 bind mount 在空 tmpfs 里无法建目标，203/EXEC）。
+# 改用 InaccessiblePaths 点名单屏蔽敏感目录，/home/agent 天然可写不受影响。
+InaccessiblePaths=/home/ubuntu /root /mnt /media
+PrivateTmp=true
+
+# ========== 第三层：网络 ==========
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+# ========== 说明 ==========
+# 不开 NoNewPrivileges：保留 sudo 白名单能力（见 /etc/sudoers.d/agent-worker，
+# 仅限 apt install + ai-worker 自身服务管理，不含任何删除/重启类命令）
+# 不开 ProtectSystem：apt install 需要写 /usr /var/lib/dpkg，由 sudoers 白名单
+# 限定只能 install 不能 remove/purge，配合命令层黑名单兜底
+
+[Install]
+WantedBy=multi-user.target
