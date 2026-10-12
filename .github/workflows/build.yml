@@ -12,9 +12,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 2026-10-13 三地统一 27：服务器 Zulu 27 + 本地 Zulu 27 已实证 Gradle 9.8.1 官方支持 Java 27；
+      # 产物经 build.gradle 的 options.release = 25 保持字节码向下兼容（major 69）
       - uses: actions/setup-java@v4
         with:
-          java-version: '25'
+          java-version: '27'
           distribution: 'temurin'
 
       - uses: gradle/actions/setup-gradle@v4
