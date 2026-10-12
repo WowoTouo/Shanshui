@@ -73,5 +73,31 @@ assert w.redact('SECRETS 空时原样返回') == 'SECRETS 空时原样返回'
 assert set(w.SENSITIVE_KEYS) == {'ARK_API_KEY', 'GITHUB_TOKEN', 'MAIL_PASS', 'FEISHU_WEBHOOK'}
 print('[5] redact 出口脱敏 + SENSITIVE_KEYS: PASS')
 
-print('\nALL LOCAL TESTS PASS (v3.1: 凭据保护三层 + redact 兜底)')
+# 6. load_env 后 MODEL_MAP 刷新回归（2026-10-13 404 踩坑：import 期冻结，.env 的 endpoint id 不生效）
+import os
+import pathlib
+import tempfile
+
+_old_map = dict(w.MODEL_MAP)
+_old_env_file = w.ENV_FILE
+with tempfile.NamedTemporaryFile('w', suffix='.env', delete=False, encoding='utf-8') as _f:
+    _f.write('ARK_MODEL_PRO=ep-regression-pro\nARK_MODEL_LITE=ep-regression-lite\n')
+    _tmp_env = _f.name
+try:
+    for _k in ('ARK_MODEL_PRO', 'ARK_MODEL_LITE', 'ARK_MODEL'):
+        os.environ.pop(_k, None)
+    w.ENV_FILE = pathlib.Path(_tmp_env)
+    w.load_env()
+    assert w.MODEL_MAP['pro'] == 'ep-regression-pro', f"load_env 未刷新 pro: {w.MODEL_MAP['pro']}"
+    assert w.MODEL_MAP['lite'] == 'ep-regression-lite', f"load_env 未刷新 lite: {w.MODEL_MAP['lite']}"
+    assert w.detect_model('正文无 model 头') == 'ep-regression-pro', 'detect_model 未用刷新后的映射'
+    print('[6] load_env 刷新 MODEL_MAP（404 回归）: PASS')
+finally:
+    w.ENV_FILE = _old_env_file
+    w.MODEL_MAP = _old_map
+    for _k in ('ARK_MODEL_PRO', 'ARK_MODEL_LITE', 'ARK_MODEL'):
+        os.environ.pop(_k, None)
+    os.unlink(_tmp_env)
+
+print('\nALL LOCAL TESTS PASS (v3.2: 凭据保护三层 + redact 兜底 + 模型映射刷新回归)')
 sys.exit(0)

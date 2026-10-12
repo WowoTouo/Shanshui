@@ -91,11 +91,19 @@ FORBIDDEN = [
 # 不写或 `model: pro` 用旗舰（地形数学/源码分析/方案设计）。
 # 注意：方舟实际调用用「推理接入点 endpoint id」（控制台创建，形如 ep-xxxx），
 # 钥匙到位后把下面两个值换成你的接入点 id。
-MODEL_MAP = {
-    'lite': os.environ.get('ARK_MODEL_LITE', 'doubao-lite-32k'),
-    # ARK_MODEL_PRO 优先（2026-10-13 钥匙到位，总工给的命名），兼容旧键 ARK_MODEL
-    'pro': os.environ.get('ARK_MODEL_PRO') or os.environ.get('ARK_MODEL', 'doubao-pro-32k'),
-}
+def _build_model_map():
+    """模型分级映射。方舟实际调用用「推理接入点 endpoint id」（ep-xxxx），
+    经 .env 的 ARK_MODEL_LITE / ARK_MODEL_PRO 注入（旧键 ARK_MODEL 兼容）。"""
+    return {
+        'lite': os.environ.get('ARK_MODEL_LITE', 'doubao-lite-32k'),
+        # ARK_MODEL_PRO 优先（2026-10-13 钥匙到位，总工给的命名），兼容旧键 ARK_MODEL
+        'pro': os.environ.get('ARK_MODEL_PRO') or os.environ.get('ARK_MODEL', 'doubao-pro-32k'),
+    }
+
+
+# import 期快照：此刻 .env 尚未加载，仅供测试与默认值；
+# load_env() 跑完后会刷新为 .env 真实值（见 load_env 末尾，2026-10-13 404 踩坑修复）
+MODEL_MAP = _build_model_map()
 
 # ===== 凭据保护（2026-10-13 总工提醒：SMTP 凭据与 tccli 密钥同等对待）=====
 # .env 中这些键的值视为敏感资产：AI 任务可读（调用需要），但绝不回显到
@@ -143,7 +151,7 @@ def log(msg: str):
 
 def load_env():
     """从 ~/.env 读密钥（600 权限，永不进 git）；敏感键值收集进 SECRETS 供出口脱敏"""
-    global SECRETS
+    global SECRETS, MODEL_MAP
     if not ENV_FILE.exists():
         return
     for raw in ENV_FILE.read_text(encoding='utf-8').splitlines():
@@ -154,6 +162,9 @@ def load_env():
             os.environ[k] = v
             if k in SENSITIVE_KEYS and len(v) >= 8:
                 SECRETS.append(v)
+    # 刷新模型映射：import 时 .env 未加载，MODEL_MAP 冻结在默认值——
+    # 不刷新就会拿 doubao-pro-32k 默认名去调方舟报 404（2026-10-13 实测踩坑）
+    MODEL_MAP = _build_model_map()
 
 
 def get_client():
