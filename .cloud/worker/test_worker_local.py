@@ -99,5 +99,14 @@ finally:
         os.environ.pop(_k, None)
     os.unlink(_tmp_env)
 
-print('\nALL LOCAL TESTS PASS (v3.2: 凭据保护三层 + redact 兜底 + 模型映射刷新回归)')
+# 7. 思考块剥离（v3.3：方舟 seed 系端点把 <seed:think_*> 混进 content）
+_raw = ('<seed:think_never_used_abc123>\n内部思考，含示例命令：\n```bash\nrm -rf /\n```\n'
+        '</think_never_used_abc123>\n可见结论：Tectonic 的 final_density 为只读密度函数。')
+_clean = w.strip_think_tags(_raw)
+assert '内部思考' not in _clean and 'rm -rf' not in _clean, _clean
+assert 'Tectonic' in _clean and _clean.strip().startswith('可见结论'), _clean
+assert w.extract_shell_blocks(_clean) == [], '思考块内的示例命令不应被提取执行'
+print('[7] strip_think_tags 思考块剥离（含防误执行）: PASS')
+
+print('\nALL LOCAL TESTS PASS (v3.3: +思考块剥离 + bash -c ulimit 修复)')
 sys.exit(0)

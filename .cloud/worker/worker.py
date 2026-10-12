@@ -121,6 +121,13 @@ def redact(text: str) -> str:
         text = text.replace(s, '***')
     return text
 
+
+def strip_think_tags(text: str) -> str:
+    """剥离方舟 seed 系模型原样回传的思考块（<seed:think_xxx>...</think_xxx>）——
+    思考内容不进执行提取与结果文件（2026-10-13 实测：端点把思考块混在 content 里，
+    且思考块内的示例命令有被 extract_shell_blocks 误提取执行的风险）"""
+    return re.sub(r'<seed:think_[^>]*>.*?</think_[^>]*>', '', text, flags=re.DOTALL).strip()
+
 SYSTEM_PROMPT = """你是「山水工程 Shanshui」项目的专职 AI 代理，7×24 无人值守运行。
 
 【项目背景】
@@ -190,8 +197,10 @@ def execute_shell(cmd: str) -> tuple[bool, str]:
             return False, f'BLOCKED（命中黑名单: {p}）'
     wrapped = f'ulimit -t 300; ulimit -f 1048576; ulimit -u 256; {cmd}'
     try:
+        # bash -c 而非 shell=True：shell=True 用 /bin/sh（dash），不支持 ulimit -u
+        # （2026-10-13 实测报 Illegal option -u，进程数限制形同虚设）
         r = subprocess.run(
-            wrapped, shell=True, capture_output=True, text=True,
+            ['bash', '-c', wrapped], capture_output=True, text=True,
             timeout=320, cwd=str(WORK_DIR),
         )
         out = (r.stdout + r.stderr).strip()[-4000:]
@@ -226,6 +235,7 @@ def process_task(client, task_path: Path):
     )
     reply = resp.choices[0].message.content or ''
     reply = redact(reply)   # 出口脱敏：AI 回复先过打码，再进执行/落盘流程
+    reply = strip_think_tags(reply)   # v3.3：剥离思考块，防伪命令进执行提取
     usage = resp.usage
     log(f'TASK LLM OK  {name} | model={model} tokens={usage.total_tokens if usage else "?"}')
 
