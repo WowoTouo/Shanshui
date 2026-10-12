@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "package": "com.tbpro.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "CreateWorldScreenMixin",
+    "CreateWorldScreenAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

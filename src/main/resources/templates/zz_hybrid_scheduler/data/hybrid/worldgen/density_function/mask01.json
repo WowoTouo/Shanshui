@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:min",
+  "left": {
+    "type": "minecraft:max",
+    "left": {
+      "type": "minecraft:mul",
+      "left": {
+        "type": "minecraft:add",
+        "left": "hybrid:region_mask",
+        "right": 1.0
+      },
+      "right": 0.5
+    },
+    "right": 0.0
+  },
+  "right": 1.0
+}

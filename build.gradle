@@ -1,0 +1,51 @@
+plugins {
+    // 26.1+ 未混淆版本专用插件（老 fabric-loom 只兼容混淆版，需要 mappings）
+    id 'net.fabricmc.fabric-loom' version '1.19.0-alpha.2'
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+}
+
+dependencies {
+    // 26.x 起 MC jar 预去混淆（pre-unobfuscated），直接使用 Mojang 官方名，无需 mappings
+    // 未混淆版 Loom 无 modImplementation，用普通 Gradle 配置
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+}
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = "UTF-8"
+}
+
+java {
+    withSourcesJar()
+}
+
+jar {
+    from("LICENSE") {
+        rename { "${it}_${project.base.archivesName.get()}" }
+    }
+}
+
+// 让主进程 Java 与 toolchain 一致，避免 Loom 与 JDK 版本打架
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}

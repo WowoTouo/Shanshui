@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:add",
+  "left": {
+    "type": "minecraft:mul",
+    "left": "hybrid:mask01",
+    "right": "minecraft:overworld/final_density"
+  },
+  "right": {
+    "type": "minecraft:mul",
+    "left": {
+      "type": "minecraft:sub",
+      "left": 1.0,
+      "right": "hybrid:mask01"
+    },
+    "right": "hybrid:vanilla/final_density"
+  }
+}

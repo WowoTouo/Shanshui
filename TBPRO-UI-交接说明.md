@@ -1,0 +1,308 @@
+# TBPRO 超级地形调度器 · AI 交接说明文档
+
+> **本文档用途**：让一个**没有对话历史的 AI** 完整理解本项目（是什么、为什么、做到哪、怎么继续做），可直接接手干活。
+> **最后更新**：2026-10-13（v5 两区缝合构建成功并已装入 mods 待实测；UTF 三区侦查完成）
+> **工程根目录**：`D:\窝窝头的1.20.2整合包\TBPRO-UI\`
+> **配套文件**：`TBPRO-UI-工程指南.md`（记忆锚点，偏简短；本文档为完整版交接说明）
+
+---
+
+## 0. 三句话理解项目
+
+1. **用户想要**：MC 26.3 的一个世界里，**多个地形引擎（UltraTerraForged + Tectonic + 原版）按大尺度随机掩码分区共存**——A 区是 UTF 的写实地形，B 区是 Tectonic 的山脉，C 区是原版，区域间可以渐变/断层/海面掩蔽过渡，而不是只能二选一。
+2. **实现方式**：自研 Fabric mod「TBPRO UI」。在创建世界界面注入一个 Customize 标签页（滑块调地形调度参数），创建世界时把参数渲染成一个**标准 26.3 数据包**（`zz_hybrid_scheduler`）注入世界，用 **density function 层面的 `lerp(mask, engineA, engineB)`** 完成分区缝合。
+3. **当前状态**：v5（Tectonic×原版两区缝合）数据包已构建完成、jar 已装入 mods，**等待游戏内实测**；v6（加 UTF 成三区）的前期侦查已完成，接缝方案待定。
+
+---
+
+## 1. 用户硬约束（验收标准，不可违背）
+
+| 约束 | 值 | 备注 |
+|---|---|---|
+| 世界高度 | **4064 默认** | Extended World Height 4064 / Higher Heights 4064 已装；用户拒绝每次手动换预设 |
+| 海平面 | **63（默认不动）** | 用户曾提"海平面-60"，后改口，最终定为 63 |
+| 区域边界 | 不要求渐变 | 可自然悬崖 / 断层 / 海面掩蔽 / 区块均值（BoundaryMode：GRADIENT/CLIFF/SEA_MASK/NEIGHBOR_AVG） |
+| 山区引擎占比 | 山区引擎应占更大区块 | 掩码频率/区块大小可调 |
+| Mod 原则 | **拒绝加新方块 mod、拒绝无 26.3 版本的 mod** | 现有整合包 mod 全部验证可用且**禁止删除** |
+| 代码 | 可开源 | GPL-3.0 LICENSE 已写 |
+| 沟通风格 | 硬核直球、纯文本分点、不用链接、直接给配置 | 用户是"领导者视角"：只定方向、管验收，不干预技术细节 |
+| 用户 PC | i7-10750H / RTX2060 6G / 16G | 目标拍建筑视频 60fps + 氛围 |
+
+**用户的核心方法论（多次重申，必须遵守）**："先统一数据，统一成官方接受的格式，然后在这个基础上调用"；"计划一步一步来"。
+
+---
+
+## 2. 当前进度总览
+
+### ✅ 已完成
+1. **整合包性能/氛围优化**（与 TBPRO 无关的前置工作）：全局粒子/特效/实体降载（particle_core、particular、动态光源、掉落物物理等，maxParticlesPerSheet 512/256、全局 0.4）
+2. **反编译学习 UTF**：`ultraterraforged-1.0.1+26.3-fabric.jar`（744 class）→ `poc/learn/utf_decomp/`，读透 PresetPacks / UTFDataGen / PresetNoiseRouterData / MixinCreateWorldScreen / TerrainPreview 等关键类
+3. **Fabric mod 开发环境打通**：MC 26.3 + Fabric Loader 0.19.5 + Loom 1.19.0-alpha.2 + Gradle 9.8.1 + JDK 25，构建成功
+4. **v4 数据包格式修复**：pack.mcmeta 加 min/max_format、noise 改 base_octave、dimension_type 重排、去 smoothstep
+5. **v5 两区缝合（Tectonic×原版）**：
+   - 从 26.3 原版 merged jar 提取全部 27 个 overworld density function → 复制到模板 `data/hybrid/worldgen/density_function/vanilla/`，内部引用改写为 `hybrid:vanilla/*`
+   - 新写 `mask01.json`（把 region_mask 压到 0~1）与 `final_density.json`（`lerp(mask01, minecraft:overworld/final_density, hybrid:vanilla/final_density)`）
+   - **原理**：`minecraft:overworld/final_density` 被 Tectonic mod 自动覆盖 = Tectonic 引擎；`hybrid:vanilla/final_density` = 内嵌的原版引擎；mask01 决定哪个区生效并渐变过渡
+   - `noise_settings/overworld.json` 的 noise_router.final_density 改为 `hybrid:final_density`
+   - `TbproPacks.java` 文件清单扩展为全部 33 项 json
+   - **build10 SUCCESS**（17s），jar 52,403B 已 Copy 进实例 mods，`jar_v5_verify.txt` 确认 77 项模板齐全
+6. **UTF 三区侦查（v6 前置）**：
+   - UTF jar 内**无静态 density function**（df 是运行时经 `UTFDataGen.makePreset` + `PresetPacks.export` 生成成 `ultraterraforged-preset-<sha>.zip`）
+   - 从用户存档 `saves\新的世界*\datapacks\` 找到 3 个真实 UTF 26.3 预设 zip → 解压 `...\saves\新的世界 (2)\datapacks\ultraterraforged-preset-676bfb96e695.zip` 到 `TBPRO-UI\utf_pack\`（264 文件）
+   - UTF df 引用分析（`utf_df_refs.txt`）：内部引用 `ultraterraforged:overworld/*` 13 处 + `minecraft:overworld/...` 3 处；**类型依赖包括 UTF 自定义类型 `ultraterraforged:cell`、`ultraterraforged:clamp_to_nearest_unit`**（由 UTF mod 运行时注册）——这是三区最大风险点
+7. **自动化测试通道研究**（见 §9）
+
+### ⏳ 进行中 / 待办（按优先级）
+1. **v5 游戏内实测**（最高优先）：创建世界 → 确认 TBPRO 标签出现 → 调参建世界 → 验证两区地形 + F3 调试屏 M 层掩码
+2. **v6 三区缝合（UTF×Tectonic×原版）**：需先确认 26.3 官方 df 类型注册表全集（lerp/clamp/spline/range_choice/jagged/beardifier 等是否原生注册），再定 UTF 自定义 type 的搬运方案
+3. **M3 预览图**：创建世界界面显示引擎分区预览（照 UTF TerrainPreview 实现：后台采样 + DynamicTexture + 缩放/平移）
+4. **引擎掩码种子校准**：`poc/mask_map.py`（MC 26.3 Perlin/Xoroshiro 移植，10 候选派生）已就绪，需用户飞点回报哪个候选正确
+5. **4064 运行时验证**：Tectonic set_height_limits 是否覆盖 4064 未实测（最高风险点）
+
+---
+
+## 3. 技术栈与架构
+
+### 技术栈
+- **MC 26.3**（java_version=25，Mojang 停发官方 mappings，jar 预去混淆，类名即官方名如 `class_3218`）
+- **Fabric Loader 0.19.5** / **Fabric API 0.162.0+26.3**
+- **Loom 插件**：`net.fabricmc.fabric-loom` version `1.19.0-alpha.2`（26.1+ 未混淆专用；老 `fabric-loom` 只兼容混淆版且要 mappings）
+- **Gradle 9.8.1**（华为云镜像下载）
+- **JDK 25**（`D:\JAVA21orPython\JAVA25\jdk-25.0.3.9-hotspot`）
+
+### 架构图
+
+```
+创建世界界面 (CreateWorldScreen)
+        │ Mixin @ModifyArg 注入
+        ▼
+┌─────────────────────────────┐
+│ TbproTab（自定义标签页）      │  6 个控件：
+│  - 掩码频率滑块               │  频率 / 区块大小 / B占比 / 边界模式 / 海平面 / 高度
+│  - 区块大小 CycleButton       │
+│  - B 引擎占比滑块             │
+│  - 边界模式 CycleButton       │
+│  - 海平面滑块 / 高度显示       │
+└─────────────────────────────┘
+        │ onCreate 时调用
+        ▼
+┌─────────────────────────────┐
+│ TbproApplier                 │  参数 → 模板渲染 → zip → 临时目录
+│  - getDataPackSelectionSettings│  → reload + setSelected
+│  - tryApplyNewDataPacks      │  → tryApplyNewDataPacks 注入
+└─────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────┐
+│ TbproPacks（模板渲染器）      │  读资源 → 占位符替换 → 目录 zip 打包
+│  packName = SHA-1 12hex      │
+└─────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────┐
+│ zz_hybrid_scheduler 数据包   │  注入世界 datapacks/
+│  data/hybrid/...             │
+└─────────────────────────────┘
+```
+
+### 缝合机制（核心原理）
+
+```
+final_density = lerp(mask01, minecraft:overworld/final_density, hybrid:vanilla/final_density)
+                    ▲                    ▲                          ▲
+                    │                    │                          │
+              掩码(0~1)          Tectonic 引擎(被mod覆盖)    原版引擎(内嵌副本)
+
+mask01 = min(max(mul(add(region_mask, 1), 0.5), 0), 1)   # 掩码归一化到 0~1
+region_mask = noise(xz_scale={{maskFrequency}}, base_octave={{maskOctaves}})
+```
+
+- mask ≈ 0 的区域 → 原版引擎生效；mask ≈ 1 的区域 → Tectonic 引擎生效；中间值 → 渐变过渡
+- 想换断层/海面边界：改 final_density 结构（BoundaryMode 枚举）
+
+---
+
+## 4. 构建环境完整答案（全验证）
+
+### build.gradle 关键配置
+```groovy
+plugins {
+    id 'net.fabricmc.fabric-loom' version '1.19.0-alpha.2'
+    id 'maven-publish'
+}
+dependencies {
+    // 无 mappings 行！无 modImplementation！
+    minecraft "com.mojang:minecraft:26.3"
+    implementation "net.fabricmc:fabric-loader:0.19.5"
+    implementation "net.fabricmc.fabric-api:fabric-api:0.162.0+26.3"
+}
+```
+
+### 构建命令
+```powershell
+$env:JAVA_HOME="D:\JAVA21orPython\JAVA25\jdk-25.0.3.9-hotspot"
+$env:Path="$env:JAVA_HOME\bin;$env:Path"
+Set-Location "D:\窝窝头的1.20.2整合包\TBPRO-UI"
+& "D:\JAVA21orPython\GRADLE\gradle-9.8.1\bin\gradle.bat" build --no-daemon
+# 产物：build\libs\tbpro-ui-0.1.0.jar（当前 52,403B）
+# 增量构建约 14-24s（Loom 缓存已到 C:\Users\CHN_W\.gradle\caches\fabric-loom\26.3\）
+```
+- 加速：去掉 `--no-daemon` 用常驻 daemon、`-x test`、只跑 `jar` 任务
+- 部署：拷 jar 到 `D:\窝窝头的1.20.2整合包\.minecraft\versions\26.3-Fabric 0.19.5\mods\`
+
+### 踩坑史（勿重踩）
+1. Loom 1.18.4 要求 Gradle ≥9.7 → 升 9.8.1
+2. Loom 找 `officialMojangMappings()` → 26.3 无官方映射 → **删 mappings 行**
+3. `Configuration 'mappings' has no dependencies` → 老插件 ID 的问题 → **换 `net.fabricmc.fabric-loom`**
+4. `modImplementation()` 不存在 → 未混淆 Loom 无 mod 配置 → **用普通 `implementation`**
+5. API 差异（javap 确认）：AbstractSliderButton 无 getValue()（`this.value` protected 字段）；AbstractWidget.height 是 protected（用 `setHeight()`）；CycleButton.builder 的 messageProvider 返回 **Component**；CreateWorldScreen 的 `getDataPackSelectionSettings`/`tryApplyNewDataPacks` 是 private（**Accessor @Invoker**）
+
+---
+
+## 5. 代码地图（src/main/java/com/tbpro/）
+
+```
+TbproUI.java                        client 入口，MOD_ID=tbpro
+settings/TbproSettings.java         record：maskFrequency/maskOctaves/bShare/boundary/seaLevel/worldHeight
+                                   + serialize()/parse() 手写 JSON + BoundaryMode 枚举（4 模式中文 label）
+                                   + DEFAULT：0.002f/-4/0.5f/GRADIENT/63/4064
+gui/createworld/TbproState.java     Holder 接口 + settings/revision/active/pendingSelection/update(Consumer)
+gui/createworld/TbproTab.java       标签页：6 控件（频率滑块/区块大小 CycleButton/B占比滑块/边界 CycleButton/海平面滑块/高度显示）
+                                   SimpleSlider extends AbstractSliderButton（读 this.value）
+gui/createworld/TbproApplier.java   prepareForCreate：参数→zip→临时目录→reload→setSelected→tryApplyNewDataPacks
+data/TbproPacks.java                模板渲染（readResource + 占位符替换 + 目录 zip 打包）+ packName(SHA-1 12hex)
+mixin/CreateWorldScreenMixin.java   @ModifyArg init→addTabs 数组扩容追加 TbproTab
+                                   @Inject onCreate HEAD cancellable→TbproApplier（失败 toast+cancel）
+                                   @Inject tick HEAD→TbproTab.tick + isReadyToCreate 后 schedule onCreate
+mixin/CreateWorldScreenAccessor.java @Invoker 暴露 2 个 private 数据包方法
+resources/
+  fabric.mod.json                   depends：fabricloader≥0.19.5 / fabric-api / minecraft ~26.3
+  tbpro.mixins.json                 client: CreateWorldScreenMixin + CreateWorldScreenAccessor
+  assets/tbpro/lang/zh_cn.json, en_us.json
+  templates/zz_hybrid_scheduler/    数据包模板（33 个 JSON，其中 27 个原版 df 副本）
+```
+
+### 模板占位符（templates/zz_hybrid_scheduler/）
+- `data/hybrid/worldgen/noise/region_mask.json` → `{{maskOctaves}}`（base_octave）
+- `data/hybrid/worldgen/density_function/region_mask.json` → `{{maskFrequency}}`（xz_scale）
+- `data/minecraft/dimension_type/overworld.json` → `{{worldHeight}}`（logical_height/height）、`{{worldDepth}}`（min_y，= -(worldHeight/2)）
+- `data/minecraft/worldgen/noise_settings/overworld.json` → `{{seaLevel}}`、`{{worldDepth}}`；final_density 引用 `hybrid:final_density`
+- 静态文件（无占位符）：`data/hybrid/worldgen/density_function/vanilla/*`（27 个原版 df 副本）、`mask01.json`、`final_density.json`
+
+---
+
+## 6. 26.3 数据格式关键事实（v4 踩坑，勿重踩）
+
+- pack.mcmeta 必须含 `min_format`/`max_format`（pack_format>81 时）；Tectonic 用 `supported_formats:[1,999], min_format:1, max_format:999`
+- noise 定义：`base_octave`+`octave_count`+`amplitude_modifiers`（旧 `firstOctave`/`amplitudes` 已废）
+- density function 原生类型（v4 已验证）：**只有 abs/add/max/min/mul/noise/sub**——clamp 用 min/max 组合；smoothstep 已废
+- **未确认**：lerp/clamp/spline/range_choice/jagged/beardifier/blend_alpha/find_top_surface/gradient/quarter_negative 等是否 26.3 原生注册（这是 UTF df 能否原样内嵌的决定性事实，见 §8 任务 2）
+- dimension_type：`monster_spawn_light_level` 字段平铺（min_inclusive/max_inclusive 顶层）+ `has_ender_dragon_fight` + `default_clock` + `timelines` + `attributes` 块
+- noise_settings 原版为引用式（noise_router 引用 minecraft:overworld/* 独立文件）；Tectonic 覆盖这些 df 命名空间（mod 数据包，自动生效无需搬运）
+- 26.3 包名注意：`net.minecraft.world.level.levelgen.densityfunction`（**小写 densityfunction**）
+
+---
+
+## 7. 关键文件与数据源
+
+| 路径 | 内容 |
+|---|---|
+| `TBPRO-UI\` | 工程根（build.gradle/settings.gradle/LICENSE/src+resources/各分析 txt） |
+| `TBPRO-UI\src\main\resources\templates\zz_hybrid_scheduler\` | v5 全部模板（33 json） |
+| `TBPRO-UI\build\libs\tbpro-ui-0.1.0.jar` | v5 产物 52,403B（已装 `...\versions\26.3-Fabric 0.19.5\mods\`） |
+| `TBPRO-UI\vanilla_pack\` | 原版 27 df 提取（源：`C:\Users\CHN_W\.gradle\caches\fabric-loom\26.3\minecraft-merged.jar`） |
+| `TBPRO-UI\tectonic_pack\` | Tectonic 数据侦查 |
+| `TBPRO-UI\utf_pack\` | UTF 26.3 官方格式数据（264 文件，从真实预设 zip 解压） |
+| `TBPRO-UI\utf_df_refs.txt` | UTF df 内部引用清单 |
+| `TBPRO-UI\jar_v5_verify.txt` | v5 jar 内容核验（77 项） |
+| `TBPRO-UI\build10.log` / `build10_tail.txt` | 最近构建日志 |
+| `poc\learn\utf_decomp\` | UTF 反编译输出（744 .java，PresetPacks/UTFDataGen/PresetNoiseRouterData 已读透） |
+| `poc\cfr.jar` | 反编译工具 |
+| `poc\mask_map.py` | MC 26.3 Perlin/Xoroshiro 移植（掩码种子校准） |
+| `...\saves\新的世界*\datapacks\ultraterraforged-preset-*.zip` | 3 个真实 UTF 26.3 预设（含 676bfb96e695 已解压） |
+| `...\versions\26.3-Fabric 0.19.5\mods\` | 用户全部已验证 mod（**禁止删**） |
+
+**关键 mod（勿动）**：
+- Tectonic 3.0.31-fabric-26.3 + Lithostitched 2.0.5（数据自动覆盖 `minecraft:overworld/*`）
+- Extended World Height 4064 / Higher Heights 4064 / No Sky Limits（高度破解）
+- DH 3.3.3、Iris、Nvidium 0.4.4-beta7-26.3（需 Sodium 0.9.2）
+- 最终 JVM：`-Xms8G -Xmx10G -XX:+UseZGC -XX:+UseStringDeduplication -XX:-OmitStackTraceInFastThrow`
+
+---
+
+## 8. 下一步执行指南（接手 AI 按此顺序干）
+
+### 任务 1：v5 游戏内实测（最高优先）
+1. 启动 PCL2：`D:\窝窝头的1.20.2整合包\Aer晨1.20.1生活大冒险整合包(1)\Plain Craft Launcher 2.exe`
+2. 版本 `26.3-Fabric 0.19.5` 启动 → 创建世界界面
+3. 确认 TBPRO 标签页出现 → 调参（默认即可）→ 建世界
+4. 验证：a) 不崩溃；b) 地形存在两种风格分区（Tectonic 山脉区 + 原版区）；c) F3 调试屏可切出 M 层掩码图
+5. 若崩溃 → 收 `...\mods\错误报告-*.zip` 或 `crash-reports\` → 修复 Mixin 注入（编译通过≠运行成功）
+
+### 任务 2：确认 26.3 官方 df 类型注册表全集（v6 决定性前置）
+- 用 CFR 反编译 `C:\Users\CHN_W\.gradle\caches\fabric-loom\26.3\minecraft-merged.jar`
+- 正确用法：`java -jar cfr.jar <jar> --outputdir <dir>`（**不要用 --classname 参数**，那是错的）
+- 反编译 `net.minecraft.world.level.levelgen.densityfunction.DensityFunctions` → grep bootstrap 里 `register("name")` 得出全集
+- 重点确认：lerp / clamp / spline / range_choice / jagged / beardifier / blend_alpha / find_top_surface / gradient / quarter_negative 是否原生注册
+- 输出到 `df_types_list.txt`，与 `utf_df_refs.txt` 对照 → 决定 UTF df 能否原样内嵌
+
+### 任务 3：v6 三区缝合（UTF×Tectonic×原版）
+用户已拍板路线：**先基础 Tectonic×原版两区（v5，实测通过后），再加 UTF 成三区**。经验上再扩展。
+- UTF df 数据源已备好（`utf_pack\data\ultraterraforged\worldgen\density_function\overworld\` 19 个官方格式 df）
+- **最大风险点**：UTF 自定义 df 类型 `ultraterraforged:cell`、`ultraterraforged:clamp_to_nearest_unit` 由 UTF mod 运行时注册——静态内嵌需要把 UTF 自定义 type 连 noise 注册一起搬（或让 UTF mod 保持装载）
+- 思路（用户提出）：绝对高度类引擎统一坐标系 → 海拔比例类统一 → 大区块分区（每种引擎在自己的区块内表现正常）→ 交界区由 TBPRO 补充（渐变/断层/海面/均值）；交界处也可随机用双方特点生成，或变成大海掩蔽
+
+### 任务 4：M3 预览图（创建世界界面显示分区预览）
+- 照 UTF TerrainPreview 实现：后台 ScheduledExecutor + 150ms 防抖 → GeneratorContext 采样 → 256×256 int[] → DynamicTexture → 滚轮缩放/拖拽平移
+
+### 任务 5：掩码种子校准
+- `poc/mask_map.py` 已生成 10 候选（`C:\Users\CHN_W\Doubao\chats\2026-10-07\new-chat\mask_maps\`，seed 12345）
+- 需用户在游戏内飞点回报哪个候选与 F3 M 层一致
+
+### 任务 6：4064 运行时验证
+- F3 看世界底部 Y / setblock 上限确认 4064 生效（Tectonic set_height_limits 是否覆盖 4064 = 最高风险点）
+
+---
+
+## 9. 自动化测试通道（重要事实）
+
+- **`computer_use_tool`（豆包虚拟桌面 GUI 通道）不可用**：报错 `gui_coding_session_activation_failed` / `豆包虚拟桌面PIP初始化失败`。根因：豆包客户端"工作模式设置 → 初始化豆包虚拟桌面"未授权（弹窗显示"去授权"状态）。授权需用户在豆包界面手动点。
+- **可用替代方案（已验证）**：PowerShell 全链路——
+  - 截屏：`System.Drawing CopyFromScreen` → PNG → `Read` 查看
+  - 鼠标模拟：`user32 SetCursorPos + mouse_event`（Add-Type 内联）
+  - 窗口控制：`SetForegroundWindow`/`ShowWindow`/`GetWindowRect`（注意 Windows 前台锁定，Edge 可能抢焦点；`WScript.Shell AppActivate` 备选）
+  - 启动程序：`Start-Process`
+- **PCL2**：exe 路径已知；启动后进程名 "Plain Craft Launcher 2"，窗口标题 "Plain Craft Launcher　"。注意：PCL2 可能因单实例/闪退退出，启动后需轮询 `Get-Process` 确认存活（最近一次存活 PID=10692/hwnd=1051564）。
+- **豆包云电脑模式**（最新发现）：豆包工作模式有"云电脑模式"（任务云端 7×24 后台跑，本地关机不影响）——如果用户授权/开通，可把构建+测试全扔云端。
+
+---
+
+## 10. 网络与工具事实
+
+- **GitHub 直连超时**（HTTP 000）；ghfast.top/gh-proxy.com 镜像 FAIL
+- **可通**：fabric-maven / maven-central / mojang（piston-meta）/ modrinth（cdn.modrinth.com）/ 华为云·腾讯云 Gradle 镜像
+- **火山方舟（豆包 API）**：用户已确认可用——注册送 2500 万 tokens + 各模型 50 万免费额度；入口 https://www.volcengine.com/product/ark 。这是用户"云端 AI 大脑"的候选（本地 16G/6G 显存跑不动 14B 本地模型）
+- 26.3 API 查询：`javap -classpath "C:\Users\CHN_W\.gradle\caches\fabric-loom\26.3\minecraft-merged.jar" -p <类名>`
+
+---
+
+## 11. 已知风险与未决问题
+
+| 风险/问题 | 状态 | 影响 |
+|---|---|---|
+| 26.3 官方 df 类型注册表全集未知 | 待任务 2 确认 | UTF df 能否原样内嵌的决定性事实 |
+| UTF 自定义 type（cell / clamp_to_nearest_unit）需随搬 | 待方案 | 三区接缝最大风险点 |
+| v5 未游戏内实测 | 待任务 1 | Mixin 运行时可能崩 |
+| 4064 高度运行时是否被 Tectonic 覆盖 | 未实测 | 最高风险点 |
+| 豆包虚拟桌面授权未完成 | 需用户操作 | GUI 自动测试通道不可用（有 PowerShell 替代） |
+| 掩码种子候选未校准 | 待用户飞点 | 掩码分布是否与预期一致未知 |
+| 本地 AI / 云电脑工作流 | 讨论中 | 火山方舟 API 已确认免费额度，未搭框架 |
+
+---
+
+## 12. 用户沟通注意事项
+
+- 风格：硬核直球、纯文本分点、不用链接、不解释直接给配置；用户"领导者视角"：只定方向、管验收、选择方案，不干预技术细节
+- 长篇项目要求：**定期写指南 md 存档**（防止 AI 上下文丢失，本文件 + 工程指南即存档）
+- 超长任务要求：每隔一段时间保存完成的要求、写设计编程指南
+- 用户明确要求过：先统一官方格式再在其上调用；计划一步一步来（先两区实测 → 再三区）

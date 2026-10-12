@@ -1,0 +1,6 @@
+{
+  "type": "minecraft:noise",
+  "noise": "hybrid:region_mask",
+  "xz_scale": {{maskFrequency}},
+  "y_scale": 0.0
+}

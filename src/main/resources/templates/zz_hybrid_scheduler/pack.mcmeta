@@ -1,0 +1,9 @@
+{
+  "pack": {
+    "supported_formats": [1, 999],
+    "min_format": 1,
+    "max_format": 999,
+    "pack_format": 108,
+    "description": "TBPRO v4: 区块级区域调度 (掩码分区地形)"
+  }
+}
