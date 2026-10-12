@@ -93,7 +93,8 @@ FORBIDDEN = [
 # 钥匙到位后把下面两个值换成你的接入点 id。
 MODEL_MAP = {
     'lite': os.environ.get('ARK_MODEL_LITE', 'doubao-lite-32k'),
-    'pro': os.environ.get('ARK_MODEL', 'doubao-pro-32k'),
+    # ARK_MODEL_PRO 优先（2026-10-13 钥匙到位，总工给的命名），兼容旧键 ARK_MODEL
+    'pro': os.environ.get('ARK_MODEL_PRO') or os.environ.get('ARK_MODEL', 'doubao-pro-32k'),
 }
 
 # ===== 凭据保护（2026-10-13 总工提醒：SMTP 凭据与 tccli 密钥同等对待）=====
