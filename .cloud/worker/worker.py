@@ -217,6 +217,30 @@ def detect_model(content: str) -> str:
     return MODEL_MAP['pro']
 
 
+def chat_completions_stream(client, model: str, messages: list) -> tuple[str, object]:
+    """流式调用方舟（v3.4）：迭代聚合 chunk，返回 (聚合全文, usage|None)。
+    - stream=True 首 token 更快；**错误在迭代中途抛出**——本函数不吞，异常上抛，
+      由 main() 主循环的 try/except 记录 ERROR 并按退避/熔断策略处理
+    - usage 只在最后 chunk 顶层可能携带；方舟不返回则 None，
+      调用方日志记 '?'（省略，不报错）
+    """
+    content = ''
+    usage = None
+    stream = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        temperature=0.3,
+        max_tokens=4096,
+        stream=True,
+    )
+    for chunk in stream:
+        if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+            content += chunk.choices[0].delta.content
+        if getattr(chunk, 'usage', None):
+            usage = chunk.usage
+    return content, usage
+
+
 def process_task(client, task_path: Path):
     name = task_path.name
     content = task_path.read_text(encoding='utf-8')
@@ -224,20 +248,14 @@ def process_task(client, task_path: Path):
 
     model = detect_model(content)
     log(f'TASK MODEL  {name} -> {model}')
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[
-            {'role': 'system', 'content': SYSTEM_PROMPT},
-            {'role': 'user', 'content': content},
-        ],
-        temperature=0.3,
-        max_tokens=4096,
-    )
-    reply = resp.choices[0].message.content or ''
+    reply, usage = chat_completions_stream(client, model, [
+        {'role': 'system', 'content': SYSTEM_PROMPT},
+        {'role': 'user', 'content': content},
+    ])
     reply = redact(reply)   # 出口脱敏：AI 回复先过打码，再进执行/落盘流程
-    reply = strip_think_tags(reply)   # v3.3：剥离思考块，防伪命令进执行提取
-    usage = resp.usage
-    log(f'TASK LLM OK  {name} | model={model} tokens={usage.total_tokens if usage else "?"}')
+    reply = strip_think_tags(reply)   # v3.3：剥离思考块，防伪命令进执行提取（聚合后执行，顺序不变）
+    tokens = getattr(usage, 'total_tokens', None) if usage else None
+    log(f'TASK LLM OK  {name} | model={model} tokens={tokens if tokens else "?"}')
 
     # ===== 执行权 v2：提取并执行 shell 块 =====
     blocks = extract_shell_blocks(reply)

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""worker.py v3.1 本地单测：语法 + detect_model 分级 + 黑名单命中 + 凭据出口脱敏"""
+"""worker.py v3.4 本地单测：语法 + detect_model 分级 + 黑名单命中 + 凭据出口脱敏
++ 模型映射刷新回归 + 思考块剥离 + 流式聚合三分支"""
 import importlib.util
 import py_compile
 import sys
@@ -108,5 +109,57 @@ assert 'Tectonic' in _clean and _clean.strip().startswith('可见结论'), _clea
 assert w.extract_shell_blocks(_clean) == [], '思考块内的示例命令不应被提取执行'
 print('[7] strip_think_tags 思考块剥离（含防误执行）: PASS')
 
-print('\nALL LOCAL TESTS PASS (v3.3: +思考块剥离 + bash -c ulimit 修复)')
+# 8. 流式聚合正确性（v3.4：mock chunk 迭代拼接 + stream=True 传递 + usage 缺失降级 + 中途错误上抛）
+import types
+
+
+def _chunk(content=None, usage=None, no_choices=False):
+    c = types.SimpleNamespace()
+    c.choices = [] if no_choices else [types.SimpleNamespace(delta=types.SimpleNamespace(content=content))]
+    c.usage = usage
+    return c
+
+
+def _mock_client(chunks, capture=None):
+    def _create(**kwargs):
+        if capture is not None:
+            capture.update(kwargs)
+        return iter(chunks)
+    return types.SimpleNamespace(chat=types.SimpleNamespace(completions=types.SimpleNamespace(create=_create)))
+
+
+# 8a. 正常拼接 + 末 chunk 带 usage + stream=True 已传
+_cap = {}
+_chunks = [_chunk('你好'), _chunk('，世界'),
+           _chunk(None, usage=types.SimpleNamespace(total_tokens=42), no_choices=True)]
+_text, _usage = w.chat_completions_stream(_mock_client(_chunks, _cap), 'ep-test', [{'role': 'user', 'content': 'hi'}])
+assert _text == '你好，世界', _text
+assert _usage is not None and _usage.total_tokens == 42, _usage
+assert _cap.get('stream') is True, 'create 未收到 stream=True'
+assert _cap.get('temperature') == 0.3 and _cap.get('max_tokens') == 4096
+print('[8] 流式聚合 + usage 末 chunk + stream=True: PASS')
+
+# 8b. 方舟不返回 usage → None 降级（日志侧记 ?，不报错）
+_text2, _usage2 = w.chat_completions_stream(
+    _mock_client([_chunk('abc'), _chunk(None, no_choices=True)]), 'ep-test', [])
+assert _text2 == 'abc' and _usage2 is None, (_text2, _usage2)
+print('[8b] 流式无 usage 降级 None: PASS')
+
+
+# 8c. 中途抛错 → 异常上抛（主循环 ERROR+退避兜底），不吞
+def _boom_gen():
+    yield _chunk('part')
+    raise RuntimeError('mid-stream')
+
+
+_mock_boom = types.SimpleNamespace(
+    chat=types.SimpleNamespace(completions=types.SimpleNamespace(create=lambda **kw: _boom_gen())))
+try:
+    w.chat_completions_stream(_mock_boom, 'ep-test', [])
+    raise AssertionError('流式中途错误未上抛')
+except RuntimeError as e:
+    assert 'mid-stream' in str(e), e
+print('[8c] 流式中途错误上抛: PASS')
+
+print('\nALL LOCAL TESTS PASS (v3.4: +流式聚合三分支)')
 sys.exit(0)
