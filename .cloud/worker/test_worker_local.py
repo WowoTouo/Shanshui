@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""worker.py v3.4 本地单测：语法 + detect_model 分级 + 黑名单命中 + 凭据出口脱敏
-+ 模型映射刷新回归 + 思考块剥离 + 流式聚合三分支"""
+"""worker.py v3.5 本地单测：语法 + detect_model 分级 + 黑名单命中 + 凭据出口脱敏
++ 模型映射刷新回归 + 思考块剥离 + 流式聚合三分支 + 开机记忆 ONBOARDING 加载"""
 import importlib.util
 import py_compile
 import sys
@@ -161,5 +161,36 @@ except RuntimeError as e:
     assert 'mid-stream' in str(e), e
 print('[8c] 流式中途错误上抛: PASS')
 
-print('\nALL LOCAL TESTS PASS (v3.4: +流式聚合三分支)')
+# 9. 开机记忆 ONBOARDING 加载（v3.5：启动时拼进 system prompt，缺失/读失败降级不崩）
+_old_ob = w.ONBOARDING_FILE
+with tempfile.NamedTemporaryFile('w', suffix='.md', delete=False, encoding='utf-8') as _f:
+    _f.write('# 山水工程 AI Worker · 入职指南\n\n## 4. 权限矩阵（v4 超级用户版）\n测试内容')
+    _tmp_ob = _f.name
+with tempfile.TemporaryDirectory() as _tmp_dir:
+    try:
+        # 9a. 文件在 → 全文返回
+        w.ONBOARDING_FILE = pathlib.Path(_tmp_ob)
+        _ob = w.load_onboarding()
+        assert '入职指南' in _ob and '权限矩阵' in _ob, _ob
+        print('[9] load_onboarding 文件在: PASS')
+        # 9b. build_system_prompt：内置 + ONBOARDING 拼接，字符数 > 0
+        _p, _n = w.build_system_prompt()
+        assert _n == len(_ob) and _n > 0
+        assert '铁律' in _p and '入职指南' in _p, '拼接后应同时含内置铁律与入职指南'
+        print('[9b] build_system_prompt 拼接（内置+ONBOARDING）: PASS')
+        # 9c. 文件缺失 → '' + 降级为内置 prompt，不崩
+        w.ONBOARDING_FILE = pathlib.Path(_tmp_dir) / 'no-such-onboarding.md'
+        assert w.load_onboarding() == ''
+        _p2, _n2 = w.build_system_prompt()
+        assert _n2 == 0 and _p2 == w.SYSTEM_PROMPT, '缺失时应降级为内置 prompt'
+        print('[9c] ONBOARDING 缺失降级（不崩）: PASS')
+        # 9d. 路径是目录（读失败）→ '' 安全降级
+        w.ONBOARDING_FILE = pathlib.Path(_tmp_dir)
+        assert w.load_onboarding() == '', '目录路径应安全返回空'
+        print('[9d] ONBOARDING 读失败降级: PASS')
+    finally:
+        w.ONBOARDING_FILE = _old_ob
+        os.unlink(_tmp_ob)
+
+print('\nALL LOCAL TESTS PASS (v3.5: +开机记忆 ONBOARDING 加载)')
 sys.exit(0)

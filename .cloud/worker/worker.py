@@ -13,6 +13,8 @@
   - 无状态：崩了/重启了，任务文件没移走就会重来，天然断点续作
   - 不空转：没任务时 sleep 60，API 失败退避 120s，绝不疯狂重试烧 token
   - 熔断：连续 5 次 API 失败 → 休眠 30 分钟（方舟挂了就别折腾）
+  - v3.5 开机记忆：启动时读 /home/agent/ONBOARDING.md（入职指南）拼进 system prompt；
+    缺失/读失败降级为内置 prompt，worker 照常启动不崩
   - v1 只做「读任务 → AI 产出文本」；执行权（shell 代码块）留待 CI 兜底后开
 
 任务文件格式（tasks/*.md）：
@@ -37,6 +39,7 @@ DONE_DIR = BASE / 'done'
 LOG_FILE = BASE / 'logs' / 'worker.log'
 ENV_FILE = BASE / '.env'
 WORK_DIR = BASE / 'work'          # 所有 shell 命令的 cwd 围栏（main() 里创建）
+ONBOARDING_FILE = BASE / 'ONBOARDING.md'   # v3.5 开机记忆：入职指南（启动时读入 system prompt）
 
 # 方舟（豆包）OpenAI 兼容端点
 ARK_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
@@ -150,6 +153,37 @@ Minecraft 1.20.2 Fabric mod「山水工程·超级地形调度器」：UltraTerr
 简体中文、结构化、硬核直球；不确定就明确说不确定，宁可少做不可做错。每个任务结束时用一句话总结「做了什么 + 结论如何」。"""
 
 
+# ===== v3.5 开机记忆：入职指南 ONBOARDING.md =====
+# 服务器 AI 的「失忆保险」：崩溃重启 / 每日重生 / 换模型之后，醒来第一件事
+# 就是知道自己是谁、边界在哪、当前研究什么。启动时读一次拼进 system
+# prompt，进程内固定——system 保持静态，上下文缓存仍命中。
+
+
+def load_onboarding() -> str:
+    """读取 /home/agent/ONBOARDING.md 全文（v3.5 开机记忆）。
+    缺失 / 为空 / 读失败 → 返回 ''，由调用方降级为内置 system prompt，worker 不许崩。
+    本函数不写日志（本地单测无日志目录），加载结果由 main() 记录。"""
+    try:
+        if ONBOARDING_FILE.is_file():
+            return ONBOARDING_FILE.read_text(encoding='utf-8').strip()
+    except Exception:
+        pass
+    return ''
+
+
+def build_system_prompt() -> tuple[str, int]:
+    """v3.5：内置 system prompt + ONBOARDING 开机记忆（若加载成功）。
+    返回 (生效 prompt, ONBOARDING 字符数；0 = 未加载，走降级)。"""
+    ob = load_onboarding()
+    if ob:
+        return f'{SYSTEM_PROMPT}\n\n---\n\n{ob}', len(ob)
+    return SYSTEM_PROMPT, 0
+
+
+# 进程内生效的 system prompt：import 期为内置版；main() 启动时刷新为含 ONBOARDING 版
+SYSTEM_PROMPT_EFFECTIVE = SYSTEM_PROMPT
+
+
 def log(msg: str):
     line = f'[{datetime.now():%Y-%m-%d %H:%M:%S}] {redact(msg)}\n'
     with open(LOG_FILE, 'a', encoding='utf-8') as f:
@@ -249,7 +283,7 @@ def process_task(client, task_path: Path):
     model = detect_model(content)
     log(f'TASK MODEL  {name} -> {model}')
     reply, usage = chat_completions_stream(client, model, [
-        {'role': 'system', 'content': SYSTEM_PROMPT},
+        {'role': 'system', 'content': SYSTEM_PROMPT_EFFECTIVE},
         {'role': 'user', 'content': content},
     ])
     reply = redact(reply)   # 出口脱敏：AI 回复先过打码，再进执行/落盘流程
@@ -286,6 +320,14 @@ def main():
     DONE_DIR.mkdir(exist_ok=True)
     WORK_DIR.mkdir(exist_ok=True)
     load_env()
+
+    # v3.5 开机记忆：ONBOARDING.md 全文拼进 system prompt（只读一次，进程内固定）
+    global SYSTEM_PROMPT_EFFECTIVE
+    SYSTEM_PROMPT_EFFECTIVE, _ob_len = build_system_prompt()
+    if _ob_len:
+        log(f'ONBOARDING loaded ({_ob_len} chars) -> system prompt（开机记忆生效）')
+    else:
+        log('ONBOARDING missing/empty -> fallback builtin system prompt（降级启动）')
 
     if not os.environ.get('ARK_API_KEY'):
         log('WARN: ARK_API_KEY 未配置，worker 空转等待（填好 ~/.env 后自动生效）')

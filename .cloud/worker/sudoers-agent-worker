@@ -1,0 +1,32 @@
+# 山水工程 AI Worker sudo 白名单（2026-10-13，v4 工具链扩展）
+# 原则：只授予 AI 干活必需的 root 能力，任何删除/覆写/网络配置/用户管理命令一律不给
+# 安装方式：/etc/sudoers.d/agent-worker，权限 0440；改动前后各跑一次 visudo -c
+
+# 包安装（仅 install，不含 remove/purge/autoremove）
+agent ALL=(root) NOPASSWD: /usr/bin/apt-get install *
+agent ALL=(root) NOPASSWD: /usr/bin/apt install *
+agent ALL=(root) NOPASSWD: /usr/bin/apt-get update
+agent ALL=(root) NOPASSWD: /usr/bin/apt update
+
+# 自身服务管理（仅 ai-worker，禁止 systemctl 其他任何目标）
+agent ALL=(root) NOPASSWD: /usr/bin/systemctl restart ai-worker
+agent ALL=(root) NOPASSWD: /usr/bin/systemctl start ai-worker
+agent ALL=(root) NOPASSWD: /usr/bin/systemctl stop ai-worker
+agent ALL=(root) NOPASSWD: /usr/bin/systemctl status ai-worker
+agent ALL=(root) NOPASSWD: /usr/bin/systemctl is-active ai-worker
+
+# 日志轮转
+agent ALL=(root) NOPASSWD: /usr/sbin/logrotate *
+
+# v4 新增：工具链安装辅助（下载/解包到 /opt 等系统路径，路径均已实证存在）
+# 残留风险（已知并接受）：curl/wget/tar/unzip 作为 root 有能力写任意路径
+# （curl -o / tar 路径穿越）。联防三层：worker.py FORBIDDEN 黑名单 +
+# systemd 沙箱（SystemCallFilter=@system-service）+ AI 铁律；硬防火墙待总工批准
+agent ALL=(root) NOPASSWD: /usr/bin/curl *
+agent ALL=(root) NOPASSWD: /usr/bin/wget *
+agent ALL=(root) NOPASSWD: /usr/bin/unzip *
+agent ALL=(root) NOPASSWD: /usr/bin/tar *
+agent ALL=(root) NOPASSWD: /usr/bin/aria2c *
+
+# 注意：systemctl 的 reboot/poweroff/halt 已被 systemd 沙箱
+# （SystemCallFilter=@system-service）在内核层禁止，双保险
