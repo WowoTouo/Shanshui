@@ -28,13 +28,13 @@ mask ≈ 0 → 原版引擎生效；mask ≈ 1 → Tectonic 引擎生效；中�
 ## 技术栈
 
 - Minecraft 26.3（预去混淆，官方类名）+ Fabric Loader 0.19.5 + Fabric API
-- fabric-loom 1.19.0-alpha.2 + Gradle 9.8.1 + **JDK 25**
+- fabric-loom 1.19.0-alpha.2 + Gradle 9.8.1 + **JDK 27**（toolchain 27 编译，`options.release = 25` 产物字节码向下兼容 Java 25，major 69）
 - GPL-3.0
 
 ## 构建
 
 ```bash
-# 需要 JDK 25
+# 需要 JDK 27（产物字节码目标 Java 25，玩家运行时零影响）
 gradle build
 # 产物：build/libs/*.jar → 放入实例 mods/ 目录
 ```
