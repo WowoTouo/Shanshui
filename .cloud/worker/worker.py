@@ -367,7 +367,39 @@ def _is_garbage(t: str) -> bool:
     return False
 
 
-def process_task(client, task_path: Path):
+def _auto_recon(content: str) -> str:
+    """v3.7.5 确定性侦察：模型零产出时，worker 自己按任务关键词 grep 仓库/backlog/docs 取证。
+    返回检索命中文本（截断 3000）；无命中 -> ''。不依赖模型是否肯调工具。"""
+    kws: list = []
+    for w in re.findall(r'[A-Za-z_][A-Za-z0-9_]{3,}', content):
+        if w.lower() not in ('http', 'https', 'true', 'false', 'model', 'task') and w not in kws:
+            kws.append(w)
+    stop_cn = ('研究', '任务', '语义', '取证', '结论', '输出', '输入', '范围', '能否', '外部',
+               '调度', '改写', '中文', '正文', '命令', '以下', '以上', '请直接', '模组', '验证',
+               '置顶', '基于', '通过', '获得', '如下')
+    for w in re.findall(r'[一-龥]{2,}', content):
+        if w not in stop_cn and w not in kws:
+            kws.append(w)
+    kws = kws[:6]
+    if not kws:
+        return ''
+    pat = '|'.join(re.escape(k) for k in kws)
+    try:
+        r = subprocess.run(['bash', '-c',
+            f"grep -rIl -E '{pat}' /home/agent/Shanshui /home/agent/research-backlog.md /home/agent/work 2>/dev/null | head -8"],
+            capture_output=True, text=True, timeout=60, cwd=str(WORK_DIR))
+        files = ' '.join(r.stdout.split())
+        if not files:
+            return ''
+        r2 = subprocess.run(['bash', '-c',
+            f"grep -rIn -E '{pat}' {files} 2>/dev/null | head -20"],
+            capture_output=True, text=True, timeout=60, cwd=str(WORK_DIR))
+        return (r2.stdout or '').strip()[-3000:]
+    except Exception:
+        return ''
+
+
+def process_task(client, task_path):
     name = task_path.name
     content = task_path.read_text(encoding='utf-8')
     log(f'TASK START  {name} ({len(content)} chars)')
@@ -393,16 +425,9 @@ def process_task(client, task_path: Path):
     final = strip_tool_calls(final)         # v3.6.1：机器语法剥离，不进 result
     if draft:
         (DONE_DIR / f'{name}.draft.md').write_text(draft, encoding='utf-8')
-    reply = final
-    if not reply.strip():
-        # v3.7.2 最终兜底：任何形态（整段思考块/纯空白/纯 tool_call 垃圾）剥离后为空，
-        # 也绝不写空 result——占位 + 指明排查方向（2026-10-13 验收实锤空 result bug）
-        log(f'TASK LLM EMPTY {name} 剥离后为空，写兜底占位')
-        reply = ('【worker 兜底】模型回复经思考块/草稿区/tool_call 剥离后为空。\n'
-                 '可能形态：整段思考块 / 纯空白 / 纯 tool_call 垃圾。请复查端点输出，'
-                 '原始回复长度见同任务上方 TASK LLM OK 日志行。')
+    reply = final   # 一阶段正文：模型直接写结论则非空；整段工具调用则为空
     tokens = getattr(usage, 'total_tokens', None) if usage else None
-    log(f'TASK LLM OK  {name} | model={model} tokens={tokens if tokens else "?"} reply_len={len(reply)}')
+    log(f'TASK LLM OK  {name} | model={model} tokens={tokens if tokens else "?"} phase1_len={len(reply)}')
 
     # ===== 执行权 v2：提取并执行 shell 块（```bash 块 + tool_call 语法兜底）=====
     blocks = extract_shell_blocks(reply) + tool_cmds
@@ -415,6 +440,73 @@ def process_task(client, task_path: Path):
             parts.append(f'### 命令 {i}\n```bash\n{cmd[:500]}\n```\n**{"成功" if ok else "失败/拒绝"}**\n```\n{out}\n```\n')
             log(f'TASK EXEC   {name} cmd#{i} ok={ok}')
         exec_log = '\n'.join(parts)
+
+    # ===== v3.7.3 智能两阶段研究模式（避免长 prompt + 复杂任务触发模型退化）=====
+    # 实证：模型面对"自己研究"的复杂任务会整段工具调用（零正文）；但把证据喂给它
+    # "写结论"就稳定返回正文。故一阶段任其跑命令取证，二阶段据证据合成正文结论——
+    # 每阶段任务单一 → 模型稳定，且产出必有正文结论。
+    if not reply.strip():
+        # 合并可用上下文：命令执行证据(exec_log) + 模型研究计划/思考(draft)
+        ctx = ''
+        if exec_log.strip():
+            ctx += '【命令执行证据】\n' + exec_log + '\n'
+        if draft.strip():
+            ctx += '【模型研究计划/思考】\n' + draft + '\n'
+        if ctx.strip():
+            log(f'TASK SYNTH   {name} 一阶段零正文，据可用上下文二阶段合成结论')
+            synth_task = (
+                f'原任务：\n{content}\n\n'
+                f'已收集以下信息：\n{ctx}\n'
+                '请基于以上信息，用中文正文直接输出研究结论（≤300字，结论置顶）；'
+                '严禁输出工具调用或思考块，只写结论正文。'
+            )
+            try:
+                reply2, _u2 = chat_completions_stream(client, model, [
+                    {'role': 'system', 'content': SYSTEM_PROMPT_EFFECTIVE},
+                    {'role': 'user', 'content': synth_task},
+                ])
+                reply2 = strip_think_tags(redact(reply2))
+                _f2, _d2 = strip_draft(reply2)
+                reply2 = strip_tool_calls(_f2).strip()
+                if reply2:
+                    reply = reply2
+                    log(f'TASK SYNTH OK {name} 合成正文 {len(reply)} 字')
+                else:
+                    reply = '（模型未直接产出正文，以下为已收集信息）\n' + ctx
+                    log(f'TASK SYNTH EMPTY {name} 二阶段仍空，回退已收集信息')
+            except Exception as e:
+                log(f'TASK SYNTH ERR {name}: {type(e).__name__}: {e}')
+                reply = '（二阶段合成异常，以下为已收集信息）\n' + ctx
+        else:
+            # v3.7.5 确定性侦察兜底：模型零产出时 worker 自己 grep 取证再合成（不依赖模型肯不肯动手）
+            log(f'TASK RECON   {name} 模型零产出，worker 确定性侦察取证')
+            recon = _auto_recon(content)
+            if recon.strip():
+                synth_task = (
+                    f'原任务：\n{content}\n\n已通过检索仓库/文档取证：\n{recon}\n\n'
+                    '请基于以上检索结果，用中文正文直接输出研究结论（≤300字，结论置顶）；严禁输出工具调用或思考块。'
+                )
+                try:
+                    reply2, _u3 = chat_completions_stream(client, model, [
+                        {'role': 'system', 'content': SYSTEM_PROMPT_EFFECTIVE},
+                        {'role': 'user', 'content': synth_task},
+                    ])
+                    reply2 = strip_think_tags(redact(reply2))
+                    _f3, _d3 = strip_draft(reply2)
+                    reply2 = strip_tool_calls(_f3).strip()
+                    if reply2:
+                        reply = reply2 + '\n\n---\n（据 worker 确定性侦察取证合成，检索命中见下）\n' + recon
+                        log(f'TASK RECON OK {name} 侦察合成正文 {len(reply2)} 字')
+                    else:
+                        reply = '（模型零产出，以下为 worker 侦察取证）\n' + recon
+                        log(f'TASK RECON SYNTH EMPTY {name}')
+                except Exception as e:
+                    log(f'TASK RECON ERR {name}: {type(e).__name__}: {e}')
+                    reply = '（侦察合成异常，以下为 worker 侦察取证）\n' + recon
+            else:
+                log(f'TASK LLM EMPTY {name} 模型零产出且侦察无果，写兜底占位')
+                reply = ('【worker 兜底】模型回复剥离后为空，且确定性侦察无相关结果。\n'
+                         '请人工介入或换模型（见 MODEL-REGISTRY 一键换脑）。')
 
     DONE_DIR.mkdir(exist_ok=True)
     result_path = DONE_DIR / f'{name}.result.md'
