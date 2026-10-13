@@ -44,6 +44,8 @@ ENV_FILE = BASE / '.env'
 WORK_DIR = BASE / 'work'          # 所有 shell 命令的 cwd 围栏（main() 里创建）
 ONBOARDING_FILE = BASE / 'ONBOARDING.md'   # v3.5 开机记忆：入职指南（启动时读入 system prompt）
 AUTONOMY_FILE = BASE / 'AUTONOMY.md'        # v3.6 自主宪章（与 ONBOARDING 一并注入）
+PROMPT_FILE = BASE / 'PROMPT.md'            # v3.7 自主核心提示词（四层注入第 1 层）
+DLC_DIR = BASE / 'dlc'                      # v3.7 DLC 扩展层（dlc/*.md 按文件名排序挂载）
 BACKLOG_FILE = BASE / 'research-backlog.md' # v3.6 研究方向队列（总工维护，AI 更新状态）
 AUTONOMY_DIR = BASE / 'logs' / 'autonomy'   # v3.6 自主模式配额计数目录
 
@@ -190,22 +192,46 @@ def load_onboarding() -> str:
     return _read_guide(ONBOARDING_FILE)
 
 
-def load_guides() -> tuple[str, int]:
-    """v3.6：读取全部开机记忆（ONBOARDING.md + AUTONOMY.md）并拼接。
-    任一缺失/读失败安全跳过（降级启动，不崩）。返回 (拼接文本, 总字符数)。"""
-    parts = [p for p in (load_onboarding(), _read_guide(AUTONOMY_FILE)) if p]
-    if not parts:
-        return '', 0
-    return '\n\n---\n\n'.join(parts), sum(len(p) for p in parts)
+def load_guides() -> tuple[str, int, list[str]]:
+    """v3.7 四层开机记忆注入（启动读一次，进程内静态，保前缀缓存命中）：
+      1. PROMPT.md（自主核心提示词；缺失 -> 内置 SYSTEM_PROMPT 兜底）
+      2. ONBOARDING.md（身份/边界）  3. AUTONOMY.md（自主协议）
+      4. dlc/*.md（DLC 扩展层，按文件名排序）
+    任一缺失/读失败安全跳过（降级启动，不崩）。
+    返回 (拼接文本, 扩展层字符数, 已加载层标签列表)；全缺 -> ('', 0, [])。"""
+    core = _read_guide(PROMPT_FILE)
+    core_loaded = bool(core)
+    if not core_loaded:
+        core = SYSTEM_PROMPT
+    layers: list[str] = []
+    extras: list[str] = []
+    if core_loaded:
+        layers.append('PROMPT.md')
+    for name, f in (('ONBOARDING.md', ONBOARDING_FILE), ('AUTONOMY.md', AUTONOMY_FILE)):
+        t = _read_guide(f)
+        if t:
+            extras.append(t)
+            layers.append(name)
+    if DLC_DIR.is_dir():
+        for p in sorted(DLC_DIR.glob('*.md')):
+            t = _read_guide(p)
+            if t:
+                extras.append(f'<!-- DLC 扩展卡: {p.name} -->\n{t}')
+                layers.append(f'dlc:{p.name}')
+    if not extras and not core_loaded:
+        return '', 0, []
+    n = (len(core) if core_loaded else 0) + sum(len(e) for e in extras)
+    prompt = core if not extras else core + '\n\n---\n\n' + '\n\n---\n\n'.join(extras)
+    return prompt, n, layers
 
 
-def build_system_prompt() -> tuple[str, int]:
-    """v3.6：内置 system prompt + 开机记忆（若加载成功）。
-    返回 (生效 prompt, 指南字符数；0 = 未加载，走降级)。"""
-    guides, n = load_guides()
-    if guides:
-        return f'{SYSTEM_PROMPT}\n\n---\n\n{guides}', n
-    return SYSTEM_PROMPT, 0
+def build_system_prompt() -> tuple[str, int, list[str]]:
+    """v3.7：四层注入生效 prompt。
+    返回 (生效 prompt, 扩展层字符数, 层标签列表；全缺 -> 内置 prompt, 0, [])。"""
+    prompt, n, layers = load_guides()
+    if prompt:
+        return prompt, n, layers
+    return SYSTEM_PROMPT, 0, []
 
 
 # 进程内生效的 system prompt：import 期为内置版；main() 启动时刷新为含开机记忆版
@@ -492,9 +518,9 @@ def main():
 
     # v3.5/v3.6 开机记忆：ONBOARDING.md + AUTONOMY.md 拼进 system prompt（只读一次，进程内固定）
     global SYSTEM_PROMPT_EFFECTIVE
-    SYSTEM_PROMPT_EFFECTIVE, _guide_len = build_system_prompt()
+    SYSTEM_PROMPT_EFFECTIVE, _guide_len, _layers = build_system_prompt()
     if _guide_len:
-        log(f'GUIDES loaded ({_guide_len} chars) -> system prompt（开机记忆生效）')
+        log(f'GUIDES loaded ({_guide_len} chars): {" + ".join(_layers)} -> system prompt（四层开机记忆生效）')
     else:
         log('GUIDES missing/empty -> fallback builtin system prompt（降级启动）')
 

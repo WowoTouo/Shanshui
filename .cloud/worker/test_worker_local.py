@@ -175,14 +175,14 @@ with tempfile.TemporaryDirectory() as _tmp_dir:
         assert '入职指南' in _ob and '权限矩阵' in _ob, _ob
         print('[9] load_onboarding 文件在: PASS')
         # 9b. build_system_prompt：内置 + ONBOARDING 拼接，字符数 > 0
-        _p, _n = w.build_system_prompt()
+        _p, _n, _ = w.build_system_prompt()
         assert _n == len(_ob) and _n > 0
         assert '铁律' in _p and '入职指南' in _p, '拼接后应同时含内置铁律与入职指南'
         print('[9b] build_system_prompt 拼接（内置+ONBOARDING）: PASS')
         # 9c. 文件缺失 → '' + 降级为内置 prompt，不崩
         w.ONBOARDING_FILE = pathlib.Path(_tmp_dir) / 'no-such-onboarding.md'
         assert w.load_onboarding() == ''
-        _p2, _n2 = w.build_system_prompt()
+        _p2, _n2, _ = w.build_system_prompt()
         assert _n2 == 0 and _p2 == w.SYSTEM_PROMPT, '缺失时应降级为内置 prompt'
         print('[9c] ONBOARDING 缺失降级（不崩）: PASS')
         # 9d. 路径是目录（读失败）→ '' 安全降级
@@ -242,27 +242,28 @@ with tempfile.TemporaryDirectory() as _ad:
         w.AUTONOMY_DIR = _old_adir
         os.environ.pop('AUTONOMY_BUDGET', None)
 
-# 13. 双指南加载（v3.6：ONBOARDING + AUTONOMY 拼接，缺一/全缺降级不崩）
-_old_ob, _old_au = w.ONBOARDING_FILE, w.AUTONOMY_FILE
+# 13. 双指南加载（v3.6：ONBOARDING + AUTONOMY 拼接，缺一/全缺降级不崩；v3.7：PROMPT 亦 mock）
+_old_ob, _old_au, _old_pf = w.ONBOARDING_FILE, w.AUTONOMY_FILE, w.PROMPT_FILE
 with tempfile.TemporaryDirectory() as _gd:
     _ob_p = pathlib.Path(_gd) / 'ONBOARDING.md'
     _au_p = pathlib.Path(_gd) / 'AUTONOMY.md'
+    w.PROMPT_FILE = pathlib.Path(_gd) / 'no-prompt.md'   # v3.7：全缺断言需 PROMPT 也不存在
     _ob_p.write_text('指南A：权限矩阵', encoding='utf-8')
     _au_p.write_text('宪章B：自主模式', encoding='utf-8')
     try:
         w.ONBOARDING_FILE, w.AUTONOMY_FILE = _ob_p, _au_p
-        _g, _n = w.load_guides()
+        _g, _n, _ = w.load_guides()
         assert '指南A' in _g and '宪章B' in _g and _n > 0
         assert w.build_system_prompt()[0].startswith(w.SYSTEM_PROMPT), '内置 prompt 须在前'
         _au_p.unlink()
-        _g2, _ = w.load_guides()
+        _g2, _, _ = w.load_guides()
         assert '指南A' in _g2 and '宪章B' not in _g2, '缺 AUTONOMY 应只剩 ONBOARDING'
         _ob_p.unlink()
-        assert w.load_guides() == ('', 0), '全缺应返回空'
-        assert w.build_system_prompt() == (w.SYSTEM_PROMPT, 0), '全缺应降级内置 prompt'
+        assert w.load_guides() == ('', 0, []), '全缺应返回空'
+        assert w.build_system_prompt() == (w.SYSTEM_PROMPT, 0, []), '全缺应降级内置 prompt'
         print('[13] load_guides 双文件（拼接/缺一降级/全缺降级）: PASS')
     finally:
-        w.ONBOARDING_FILE, w.AUTONOMY_FILE = _old_ob, _old_au
+        w.ONBOARDING_FILE, w.AUTONOMY_FILE, w.PROMPT_FILE = _old_ob, _old_au, _old_pf
 
 # 14. 自动派发 spawn_auto_task（v3.6：PROJECT 续作优先 > backlog；配额尽/backlog 尽 → None）
 _old_base, _old_tasks, _old_bl2, _old_adir2, _old_log = w.BASE, w.TASKS_DIR, w.BACKLOG_FILE, w.AUTONOMY_DIR, w.log
