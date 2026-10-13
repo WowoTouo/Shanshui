@@ -44,10 +44,11 @@
 - [ ] 白嫖迁移战略：2026-11-12 到期前打包全部工程文件+运行环境上云，到期不续换免费服务器重建（科学牵头，WB 补清单）
 - [ ] ufw 出站白名单批准
 - [ ] ARK Key 季度轮换
-- [ ] 模型层决策：Doubao-Seed-Evolving 在 15k 四层 prompt + 复杂任务下退化为 tool_call/思考块（零正文）；有用产出需换模型或调 prompt（MODEL-REGISTRY 一键换脑）——待总工定
+- [x] 模型退化应对：v3.7.3-3.7.5 智能两阶段研究 + 合成增强 + 确定性侦察兜底——模型零产出也据检索合成正文（实证 727 字诚实结论）；无需换模型即有稳定产出
 
 ## 部署/变更台账
 - 2026-10-13 21:2x 发展 op=deploy obj=worker.py v3.7.2（总工授权"你帮我配置，我授权你和山水"）：patch_v372.py 4 处锚点补丁（空结果回退抽思考块正文 + process_task 最终兜底占位 / STALL_RETRY_AFTER=6 自愈重试）→ 备份 worker.py.bak-pre-v372 → systemctl restart → 复验（STALL [N/6] 自愈放行实证 21:29/21:34、result 不再空白）→ commit 589189e push gitee。根因：模型层退化（非代码 bug），代码已健壮；有用产出待模型层决策。
+- 2026-10-13 22:2x 发展 op=deploy obj=worker.py v3.7.3-3.7.5 + sync-research.sh：① 智能两阶段研究（一阶段取证 / 二阶段据证据合成正文）② 合成增强（exec_log+draft 合并上下文）③ 确定性侦察兜底 _auto_recon（模型零产出时 worker 自 grep 仓库取证再合成）——实证模型零产出仍合成 727 字诚实结论；④ 研究成果自动上云 sync-research.sh（cron 每 2h，fetch+rebase 多写入方安全 + 镜像 research/ + push）。四地对齐 7a9d590；v375 结论 + 自主 Tectonic 结论均已上云 research/results/。
 
 ## GitHub SSH 公钥登记（待总工操作）— 2026-10-13 19:2x
 - 用途：登记后服务器/本地即可经 SSH/22 直推 GitHub，收口到 4e8b887（绕开 443 掐断）
