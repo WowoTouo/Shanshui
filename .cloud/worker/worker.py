@@ -317,14 +317,16 @@ def process_task(client, task_path: Path):
     reply = redact(reply)   # 出口脱敏：AI 回复先过打码，再进执行/落盘流程
     reply = strip_think_tags(reply)   # v3.3：剥离思考块，防伪命令进执行提取（聚合后执行，顺序不变）
     final, draft = strip_draft(reply)   # v3.6：机器码协议——草稿区剥离存档，正式区才进 result
+    tool_cmds = extract_tool_calls(final)   # v3.6.1：tool_call XML 兜底提命令（先提后剥）
+    final = strip_tool_calls(final)         # v3.6.1：机器语法剥离，不进 result
     if draft:
         (DONE_DIR / f'{name}.draft.md').write_text(draft, encoding='utf-8')
     reply = final
     tokens = getattr(usage, 'total_tokens', None) if usage else None
     log(f'TASK LLM OK  {name} | model={model} tokens={tokens if tokens else "?"}')
 
-    # ===== 执行权 v2：提取并执行 shell 块 =====
-    blocks = extract_shell_blocks(reply)
+    # ===== 执行权 v2：提取并执行 shell 块（```bash 块 + tool_call 语法兜底）=====
+    blocks = extract_shell_blocks(reply) + tool_cmds
     exec_log = ''
     if blocks:
         log(f'TASK EXEC   {name} 提取到 {len(blocks)} 个命令块')
@@ -381,8 +383,9 @@ def autonomy_tick():
 
 
 def next_plan_item():
-    """扫描 work/*/PLAN.md，返回 (项目名, 第一个未勾选项)（AUTONOMY §3 状态机）。
-    复选框语法：- [ ] 未完成 / - [x] 完成 / - [!] 阻塞。无进行中项目 → None。"""
+    """扫描 work/*/PLAN.md，返回 (项目名, 第一个未完成项, 状态行签名)（AUTONOMY §3 状态机）。
+    复选框语法：- [ ] 未开始 / - [~] 进行中（心跳，仍续派）/ - [x] 完成 / - [!] 阻塞。
+    无进行中项目 → None。签名 = 状态行原文：AI 改动状态行才放行下一轮（v3.6.1 进度守卫）。"""
     try:
         plans = sorted(BASE.glob('work/*/PLAN.md'), key=lambda p: p.stat().st_mtime)
     except Exception:
@@ -390,9 +393,9 @@ def next_plan_item():
     for plan in plans:
         try:
             for line in plan.read_text(encoding='utf-8').splitlines():
-                m = re.match(r'^\s*-\s*\[ \]\s*(.+)$', line)
+                m = re.match(r'^\s*-\s*\[( |~)\]\s*(.+)$', line)
                 if m:
-                    return plan.parent.name, m.group(1).strip()
+                    return plan.parent.name, m.group(2).strip(), line.strip()
         except Exception:
             continue
     return None
