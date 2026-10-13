@@ -38,11 +38,42 @@
 - [x] GitHub coordination/STATE.md 中枢建立（e722da9）
 - [x] 服务器 ~/Shanshui 切 GitHub remote（已确认 origin fetch+push 生效）
 - [x] 配额重置（2026-10-13 科学 12→0）
-- [ ] 本地仓库 push 到 GitHub（代码+白板同步）
+- [ ] GitHub 收口（4e8b887）：本地+服务器两 SSH 公钥待总工登记后补推
 - [ ] v3.7 部署（patch_v37.py 落盘未推；剩 STALL守卫/清理循环/提案通道 3 件）
-- [ ] 服务器 2026-11-12 续费
+- [x] 预算水位监控入板（4.96M/5.5M 快照 + 100万告警阈值，quota-alert 联动）
+- [ ] 白嫖迁移战略：2026-11-12 到期前打包全部工程文件+运行环境上云，到期不续换免费服务器重建（科学牵头，WB 补清单）
 - [ ] ufw 出站白名单批准
 - [ ] ARK Key 季度轮换
+
+## GitHub SSH 公钥登记（待总工操作）— 2026-10-13 19:2x
+- 用途：登记后服务器/本地即可经 SSH/22 直推 GitHub，收口到 4e8b887（绕开 443 掐断）
+- 本地公钥（账号 SSH key，WowoTouo）：
+  `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOOHCv9CjH5bWDxWKcoQoo0khFfPYC+1eLufrFk9W4ES wowotou-local@shanshui`
+- 服务器公钥（仓库 Deploy Key，勾选 Allow write access，shanshui-server@wowotouo）：
+  `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICoBbDN820PtWaYYB3cX1CUf2XyBtNhLWVc7rXC9o0db shanshui-server@wowotouo`
+- 替代通道：若总工给 GitHub PAT（scope=admin:public_key），WB 可用 API 代登两把；否则请总工在 GitHub Web UI 粘贴
+
+## 运行时监控（预算水位）— 2026-10-13 19:2x 入板
+- 模型端点：方舟 `ep-20261013070524-xjjn2`（科学本地豆包 + 山水服务器 worker 共用同一配额池）
+- 快照基准（2026-10-13 19:12）：余额 4,963,479 / 共 5,500,000 tokens（剩 ~90.2%）
+- 单价：6.0 元/百万 tokens；剩余价值 ≈ 29.8 元
+- 告警阈值：剩余 < 1,000,000 tokens 触发 quota-alert.sh 发 md 邮件告警
+- 估算口径：无 IAM AK/SK 查不了精确余额；基于快照 + worker.log 实际 tokens 累加（未知按 8000 估），增量基线仅计快照后新增，避免重复扣
+- 监控实现：服务器 /home/agent/work/tools/quota-alert.sh（cron */6），state=/home/agent/logs/quota_state.txt，log=/home/agent/logs/quota.log
+- 当前读数（19:12 后）：bal_est=4963479，运行正常
+
+## 白嫖迁移战略（2026-11-12 服务器到期）— 2026-10-13 19:2x 用户定调
+- 决策：到期**不续费**，换免费服务器重建；重点是把**全部必要工程文件 + 运行环境**打包上云，保证新服务器一键可重建
+- 红线：不备份系统（OS/apt 等），只备份工程文件与可重建的运行环境配置
+- 牵头：科学（本地豆包）已在处理；WB 补「必须打包清单」并交接
+- 必须打包清单（草案，WB 提供，科学认领执行）：
+  - 工程源码：Shanshui 仓库全量（含 .cloud/worker/ 部署包、coordination/ 白板、OPS-STATE/STATE/FOUNDATION/SIGNAL）
+  - 运行环境：worker.py + run_worker.sh + summary.sh + send-result-mail.sh + quota-alert.sh + disk-alert.sh + 镜像泵脚本
+  - 配置模板（不含密钥）：ai-worker.service / agent-sudoers / ai-worker-logrotate.conf / .msmtprc-template / .env-template（密钥槽位留空）
+  - 依赖清单：venv312 的 `uv pip freeze` 产出 requirements（Python 3.12.15）；Java 工具链说明（Zulu27 主 + Zulu25 备，gradle 9.8.1，options.release=25）
+  - 状态快照：OPS-STATE.md + 当前配额水位 + 防火墙规则导出（tccli 已就绪）
+- 目标产物：一个可重现的打包（tar/脚本），新免费服务器 clone 后一条命令拉起 ai-worker
+- 时间窗：2026-11-12 前完成上云；建议 11-01 起每周校验一次打包完整性
 
 ## 各方声明
 - WorkBuddy：只读镜像 GitHub，不越权写；动手前读白板占锁
