@@ -15,6 +15,7 @@ Restart=always
 RestartSec=15
 MemoryMax=1200M
 TasksMax=128
+CPUQuota=80%
 RuntimeMaxSec=86400
 
 # ========== 第一层：内核级禁重启/禁内核破坏 ==========
