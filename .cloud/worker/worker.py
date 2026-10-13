@@ -284,16 +284,16 @@ def extract_shell_blocks(reply: str) -> list[str]:
 def extract_tool_calls(t):
  L=chr(60); G=chr(62); Q=chr(34)
  c=[]
- pat=L+'function name='+Q+'bash'+Q+G+'(.*?)'+L+'/function'+G
- for fn in re.findall(pat,t,flags=re.DOTALL):
-  pat2=L+'parameter'+G+'(.*?)'+L+'/parameter'+G
+ pat=L+'function name='+Q+'[^'+Q+']*'+Q+G+'(.*?)'+L+'/function'+G
+ for fn in re.findall(pat,t,flags=re.DOTALL|re.IGNORECASE):
+  pat2=L+'parameter'+G+'[^'+G+']*'+G+'(.*?)'+L+'/parameter'+G
   q=[x.strip() for x in re.findall(pat2,fn,flags=re.DOTALL) if x.strip()]
   if q: c.append(q[0] if len(q)==1 else ' && '.join(q))
  return c
 def strip_tool_calls(t):
  L=chr(60); G=chr(62); Q=chr(34)
- t=re.sub(L+'seed:tool_call'+G+'.*?'+L+'/seed:tool_call'+G,'',t,flags=re.DOTALL)
- t=re.sub(L+'function name='+Q+'bash'+Q+G+'.*?'+L+'/function'+G,'',t,flags=re.DOTALL)
+ t=re.sub(L+'seed:tool_call'+G+'.*?'+L+'/seed:tool_call'+G,'',t,flags=re.DOTALL|re.IGNORECASE)
+ t=re.sub(L+'function name='+Q+'[^'+Q+']*'+Q+G+'.*?'+L+'/function'+G,'',t,flags=re.DOTALL|re.IGNORECASE)
  return t.strip()
 def execute_shell(cmd: str) -> tuple[bool, str]:
     """第三层防线：黑名单 → 资源围栏 → 隔离执行 → 输出截断"""
@@ -347,6 +347,17 @@ def chat_completions_stream(client, model: str, messages: list) -> tuple[str, ob
     return content, usage
 
 
+def _is_garbage(t: str) -> bool:
+    """v3.7.1 模型退化兜底：Seed 端点偶发输出空/无限嵌套 seed:tool_call 垃圾"""
+    if not t:
+        return True
+    if t.count('<seed:tool_call') > 3:
+        return True
+    if len(t) > 100 and len(set(t)) < 6:
+        return True
+    return False
+
+
 def process_task(client, task_path: Path):
     name = task_path.name
     content = task_path.read_text(encoding='utf-8')
@@ -354,10 +365,18 @@ def process_task(client, task_path: Path):
 
     model = detect_model(content)
     log(f'TASK MODEL  {name} -> {model}')
-    reply, usage = chat_completions_stream(client, model, [
-        {'role': 'system', 'content': SYSTEM_PROMPT_EFFECTIVE},
-        {'role': 'user', 'content': content},
-    ])
+    reply, usage = '', None
+    for attempt in (1, 2):
+        reply, usage = chat_completions_stream(client, model, [
+            {'role': 'system', 'content': SYSTEM_PROMPT_EFFECTIVE},
+            {'role': 'user', 'content': content},
+        ])
+        if reply and not _is_garbage(reply):
+            break
+        log(f'TASK LLM RETRY {name} attempt={attempt} reply_len={len(reply)}')
+    if not reply or _is_garbage(reply):
+        log(f'TASK LLM FAIL  {name} 模型连续返回空/垃圾回复')
+        reply = '（任务失败：模型连续返回空/垃圾回复，详见 worker.log TASK LLM FAIL）'
     reply = redact(reply)   # 出口脱敏：AI 回复先过打码，再进执行/落盘流程
     reply = strip_think_tags(reply)   # v3.3：剥离思考块，防伪命令进执行提取（聚合后执行，顺序不变）
     final, draft = strip_draft(reply)   # v3.6：机器码协议——草稿区剥离存档，正式区才进 result
@@ -367,7 +386,7 @@ def process_task(client, task_path: Path):
         (DONE_DIR / f'{name}.draft.md').write_text(draft, encoding='utf-8')
     reply = final
     tokens = getattr(usage, 'total_tokens', None) if usage else None
-    log(f'TASK LLM OK  {name} | model={model} tokens={tokens if tokens else "?"}')
+    log(f'TASK LLM OK  {name} | model={model} tokens={tokens if tokens else "?"} reply_len={len(reply)}')
 
     # ===== 执行权 v2：提取并执行 shell 块（```bash 块 + tool_call 语法兜底）=====
     blocks = extract_shell_blocks(reply) + tool_cmds
