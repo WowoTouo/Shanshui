@@ -46,6 +46,10 @@ ONBOARDING_FILE = BASE / 'ONBOARDING.md'   # v3.5 开机记忆：入职指南（
 AUTONOMY_FILE = BASE / 'AUTONOMY.md'        # v3.6 自主宪章（与 ONBOARDING 一并注入）
 PROMPT_FILE = BASE / 'PROMPT.md'            # v3.7 自主核心提示词（四层注入第 1 层）
 DLC_DIR = BASE / 'dlc'                      # v3.7 DLC 扩展层（dlc/*.md 按文件名排序挂载）
+CLEANUP_DIR = BASE / 'logs' / 'cleanup'     # v3.7 清理循环每日 marker 目录
+PROPOSALS_DIR = BASE / 'proposals'          # v3.7 权限提案目录（DLC-001 §3，默认拒绝）
+MAIL_SCRIPT = BASE / 'work' / 'tools' / 'send-result-mail.sh'  # v3.7 提案邮件通知（msmtp 通道）
+WORKER_VERSION = 'v3.7'                     # 版本号（启动日志可见）
 BACKLOG_FILE = BASE / 'research-backlog.md' # v3.6 研究方向队列（总工维护，AI 更新状态）
 AUTONOMY_DIR = BASE / 'logs' / 'autonomy'   # v3.6 自主模式配额计数目录
 
@@ -453,61 +457,170 @@ def next_backlog_item():
     return None
 
 
-def spawn_auto_task():
-    """v3.6 自动派发（AUTONOMY §7 优先级）：PROJECT 续作 > backlog 研究项。
-    写 tasks/auto-<时间戳>-<slug>.md，占用一次配额。无条件可派 → None（调用方 sleep）。"""
-    if not autonomy_budget_left():
-        return None
+def _current_auto_target():
+    """v3.7：当前自动派发目标 → (kind, key, item, sig)。
+    sig = 目标状态行原文（PLAN.md 复选框行 / backlog 状态行）——
+    AI 改动状态行才放行下一轮（STALL 守卫的比对基准）。无目标 → None。"""
     plan = next_plan_item()
     if plan:
         proj, item, sig = plan
-        name = f'auto-{datetime.now():%Y%m%d-%H%M}-proj-{proj}.md'
-        body = f"""# 自主任务：继续 PROJECT {proj}
+        return 'proj', proj, item, sig
+    item = next_backlog_item()
+    if not item:
+        return None
+    text = _read_guide(BACKLOG_FILE)
+    for line in text.splitlines():
+        if item in line:
+            return 'backlog', None, item, line.strip()
+    return 'backlog', None, item, item
+
+
+def spawn_auto_task():
+    """v3.7 空闲自动派发 + 进度守卫（STALL，防烧配额）。
+    目标优先级：PROJECT 续作（work/*/PLAN.md 未勾选/[~] 心跳项）> backlog 研究项。
+    - STALL 守卫：logs/autonomy/last-spawn.sig 记录派发时目标状态行原文；
+      状态行不变（AI 无心跳/无推进）→ 记 AUTO STALL 并跳过，不烧配额
+    - 配额：logs/autonomy/<日期>.count，AUTONOMY_BUDGET（.env，默认 12，0=关闭）
+    - 时间戳精确到秒：杜绝同分钟任务名互相覆盖（2026-10-13 首跑事故修复）
+    成功派发 → 任务文件名；无条件 → None（调用方 sleep）。"""
+    tgt = _current_auto_target()
+    if not tgt:
+        return None
+    kind, key, item, sig = tgt
+    sig_file = AUTONOMY_DIR / 'last-spawn.sig'
+    try:
+        last_sig = sig_file.read_text(encoding='utf-8').strip() if sig_file.exists() else ''
+    except OSError:
+        last_sig = ''
+    if last_sig == sig:
+        log(f'AUTO STALL: 目标状态行未变化（AI 无心跳），跳过派发: {item[:60]}')
+        return None
+    if not autonomy_budget_left():
+        return None
+    stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+    if kind == 'proj':
+        name = f'auto-{stamp}-proj-{key}.md'
+        body = f"""# 自主任务：继续 PROJECT {key}
 model: pro
 
 ## 目标
-完成 work/{proj}/PLAN.md 中的下一个子任务：{item}
+完成 work/{key}/PLAN.md 中的下一个子任务：{item}
+
+## 纪律（v3.7 强制）
+1. 所有命令必须写在 bash 代码块中（系统只提取该格式执行；方舟 seed 系模型
+   若发 tool_call XML 也会被兜底解析，但 bash 块最稳）
+2. 推进该项：做完把 PLAN.md 对应状态行改 - [x]；进行中每轮改 - [~] 心跳；卡住改 - [!] 并写明阻塞点
+3. 结论写进本任务 result；中间产物落 work/ 对应目录；解决的**新**问题写 work/playbooks/ 条目 + INDEX
 
 ## 上下文
-- 先读 work/{proj}/PLAN.md 全文，确认当前进度（状态即记忆）
+- 先读 work/{key}/PLAN.md 全文（状态即记忆）
 - 先 grep work/playbooks/INDEX.md 找相关经验（shell 零成本，命中先读）
-- 研究结论落 work/learnings/，解决的问题落 work/playbooks/
-
-## 边界
-只做本子任务；完成后用 shell 块把 PLAN.md 对应行勾选为 - [x]；
-卡住标 - [!] 并记录原因（等总工决策，不空转）。
 
 ## 期望产出
 【结论】段置顶（≤3 句）+ 证据路径；≤600 字。
 """
     else:
-        item = next_backlog_item()
-        if not item:
-            return None
         slug = re.sub(r'[^\w一-龥]+', '-', item)[:40].strip('-') or 'research'
-        name = f'auto-{datetime.now():%Y%m%d-%H%M}-{slug}.md'
+        name = f'auto-{stamp}-{slug}.md'
         body = f"""# 自主研究任务：{item}
 model: pro
 
 ## 目标
 {item}
 
+## 纪律（v3.7 强制）
+1. 所有命令必须写在 bash 代码块中（系统只提取该格式执行；方舟 seed 系模型
+   若发 tool_call XML 也会被兜底解析，但 bash 块最稳）
+2. 完成后用 shell 块更新 research-backlog.md 状态行（[✔] 完成 / [!] 阻塞+原因）
+3. 结论写进本任务 result；中间产物落 work/ 对应目录
+
 ## 上下文
 - 先 grep work/playbooks/INDEX.md 与 work/learnings/ 找相关沉淀（shell 零成本）
 - 复杂问题用任务链：本轮只做侦察/验证，分析结论留给后续 auto 任务
 - 参考 ONBOARDING §8 研究主题速览
 
-## 边界
-只做本 backlog 项，不扩大 scope；完成后用 shell 块更新 research-backlog.md 状态行
-（[✔] 完成 / [!] 阻塞+原因）；解决的**新**问题必须写 work/playbooks/ 条目 + INDEX。
-
 ## 期望产出
 【结论】段置顶（≤3 句）+ 证据（文件路径/命令输出/引用）；≤600 字。
 """
     (TASKS_DIR / name).write_text(body, encoding='utf-8')
+    sig_file.parent.mkdir(parents=True, exist_ok=True)
+    sig_file.write_text(sig, encoding='utf-8')
     autonomy_tick()
-    log(f'AUTO SPAWN {name}')
+    log(f'AUTO SPAWN {name} -> {kind}:{key or "backlog"} | {item[:60]}')
     return name
+
+
+# ===== v3.7 零 token 治理：清理循环 + 提案检测（DLC-001 §2/§3）=====
+# 两者均在空闲分支触发，纯 shell/文件操作，不经过模型——不花一分钱 token。
+def maybe_run_cleanup():
+    """v3.7（DLC-001 §2）：空闲时触发每日清理检查。
+    - 每日上限 1 次（marker: logs/cleanup/<日期>.done）
+    - 独立子进程跑 work/tools/cleanup.sh（默认 dry-run），不阻塞主循环
+    - 零 token：脚本不经过模型"""
+    try:
+        CLEANUP_DIR.mkdir(parents=True, exist_ok=True)
+        marker = CLEANUP_DIR / f'{datetime.now():%Y-%m-%d}.done'
+        if marker.exists():
+            return
+        script = BASE / 'work' / 'tools' / 'cleanup.sh'
+        if not script.exists():
+            return
+        subprocess.Popen(
+            ['bash', str(script)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        marker.write_text(datetime.now().isoformat(), encoding='utf-8')
+        log('CLEANUP: 每日清理检查已触发（dry-run，零 token，独立子进程）')
+    except Exception as e:
+        log(f'CLEANUP trigger failed: {e}')
+
+
+def check_proposals():
+    """v3.7（DLC-001 §3）：扫描 proposals/ 新提案 → digest + 日志 + 邮件通知（零 token）。
+    - 新提案判定：对比 proposals/.notified 记录；digest-* 前缀不计
+    - 邮件走 work/tools/send-result-mail.sh（msmtp 子进程）
+    - AI 只提案不启用；默认拒绝，等总工批准"""
+    if not PROPOSALS_DIR.is_dir():
+        return
+    seen_file = PROPOSALS_DIR / '.notified'
+    try:
+        seen = set(seen_file.read_text(encoding='utf-8').split())
+    except OSError:
+        seen = set()
+    new = [
+        p for p in sorted(PROPOSALS_DIR.glob('*.md'))
+        if p.name not in seen and not p.name.startswith('digest-')
+    ]
+    if not new:
+        return
+    stamp = datetime.now().strftime('%Y-%m-%d')
+    lines = [
+        f'# 权限提案待批 digest {stamp}', '',
+        f'新增 {len(new)} 份提案。默认拒绝——批准后才由总工侧落地（sudoers/配置等）。', '',
+    ]
+    for p in new:
+        try:
+            head = p.read_text(encoding='utf-8')[:600]
+        except OSError:
+            head = '(读取失败)'
+        lines += [f'## {p.name}', f'路径：{p}', '```markdown', head, '```', '']
+    digest = PROPOSALS_DIR / f'digest-{stamp}.md'
+    digest.write_text('\n'.join(lines), encoding='utf-8')
+    with seen_file.open('a', encoding='utf-8') as f:
+        for p in new:
+            f.write(f'{p.name}\n')
+    log(f'PROPOSAL ALERT: {len(new)} 份新提案待批 -> {digest}')
+    if MAIL_SCRIPT.exists():
+        try:
+            subprocess.Popen(
+                ['bash', str(MAIL_SCRIPT), f'[权限提案] {len(new)} 份新提案待批 - {stamp}', str(digest)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            log('PROPOSAL: 邮件通知已触发（msmtp 子进程，零 token）')
+        except Exception as e:
+            log(f'PROPOSAL mail trigger failed: {e}')
 
 
 def main():
@@ -523,6 +636,7 @@ def main():
         log(f'GUIDES loaded ({_guide_len} chars): {" + ".join(_layers)} -> system prompt（四层开机记忆生效）')
     else:
         log('GUIDES missing/empty -> fallback builtin system prompt（降级启动）')
+    check_proposals()   # v3.7：启动补检一次提案（崩溃恢复不丢通知，零 token）
 
     if not os.environ.get('ARK_API_KEY'):
         log('WARN: ARK_API_KEY 未配置，worker 空转等待（填好 ~/.env 后自动生效）')
@@ -543,6 +657,9 @@ def main():
                 continue
 
             if not tasks:
+                # v3.7 零 token 治理：清理检查 + 提案检测（均不经过模型，日限/按需限频）
+                maybe_run_cleanup()
+                check_proposals()
                 # v3.6 自主模式：不空转，按优先级自动派发（PROJECT 续作 > backlog 研究项）
                 if spawn_auto_task():
                     continue   # 下一轮迭代立即领取处理
@@ -569,5 +686,5 @@ def main():
 
 
 if __name__ == '__main__':
-    log('=== worker process start ===')
+    log(f'=== worker process start ({WORKER_VERSION}) ===')
     main()

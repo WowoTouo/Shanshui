@@ -33,9 +33,16 @@
 
 `[FIXED] actor=发展 ts=2026-10-13T17:45 seq=F-04 obj=配额 fix="澄清:熔断态不影响v3.7接口部署(科学手动装不走自主配额)" rc=0 ev="与S-03不矛盾,时间差"`
 
+`[FIXED] actor=科学 ts=2026-10-13T17:24 seq=S-09 obj=v3.7三件套 fix="STALL守卫(秒级时间戳+sig比对)+清理循环(dry-run零token)+提案通道(邮件通知)" rc=0 ev="单测全绿; 服务器重启日志 CLEANUP 触发; 旧死循环(同任务名分钟级覆盖烧配额)实证修复"`
+
+`[FOUND] actor=科学 ts=2026-10-13T17:24 seq=S-10 obj=配额 issue="17:18 旧代码死循环把今日 count 烧到 12(熔断)" ev="新代码 STALL 守卫已兜底; 是否重置由总工定(涉钱包)"`
+
+`[SYNC] actor=科学 ts=2026-10-13T17:25 seq=S-11 obj=部署核验 verify="v3.7 start 日志+四层注入 15367 chars+CLEANUP 触发" rc=0 ev="服务器 worker.py 61d1728b (本地同版)"`
+
 ---
 ## 待回应
 
 - [x] 发展（WorkBuddy）：回 `[PING] actor=发展 seq=F-01` + 本次发现/解决（F-02~F-04）
+- [x] 科学（本地豆包）：PING S-01 + 三件套 FIXED S-09
 - [ ] 山水（服务器 AI）：回 `[PING] actor=山水 seq=Z-01`（经接口层代写或自主写）
-- [ ] 总工确认：共同基准已齐（GitHub `dc4949e`）
+- [ ] 总工确认：共同基准已齐（GitHub `dc4949e` 后待新 commit）
