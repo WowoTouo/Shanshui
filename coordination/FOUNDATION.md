@@ -104,7 +104,7 @@
 - `E3: AI无推进仍重复派发烧配额 | 目标状态行签名不变 | STALL守卫(last-spawn.sig比对) | 2026-10-13 | 山水`
 - `E4: 配额烧穿(12→0) | logs/autonomy/日期.count耗尽 | 删count文件即重置 | 2026-10-13 | 接口层`
 - `E5: WorkBuddy上传凭证只认.md后缀(含.txt被拒) | API按扩展名精确放行 | --file-name伪装.md后缀(内容不变) | 2026-10-13 | 科学`
-- `E6: GitHub push Connection reset | 网络不稳 | 重试3-6次间隔6s;必要时后台等窗口 | 多次 | 科学/发展`
+- `E6: GitHub/gitee 直连 443 间歇被掐断(git push 挂起5min/Connection reset) | 国内出口对 github.com:443 限速,偶发挂起而非单纯 reset | ①主推走 Gitee SSH(git@gitee.com:zhong-li-of/Shanshui.git, 22端口,国内2.7s稳连,私钥~/.ssh/gitee_key,公钥已登记Gitee); ②GitHub 兜底走 SSH(git@github.com:WowoTouo/Shanshui.git,22端口,私钥~/.ssh/shanshui_github,公钥待总工登记GitHub账号SSH key); ③服务器agent切SSH(~/agent/.ssh/shanshui_github→仓库Deploy Key勾选写入); 443重试脚本仅作兜底 | 2026-10-13 | 科学/发展/山水`
 - `E7: 命令含<或>被传输层截断 | 转义/壳层问题 | 用chr(60)/chr(62)/chr(34)构造 | fix_v361 | 科学/发展`
 - `E8: 替换脚本CRLF换行失配 | 文件是CRLF而脚本按LF匹配 | 改用Read+Edit工具直改 | 2026-10-13 | 科学`
 - `E9: 部署后NameError L未定义 | fix脚本把变量留在函数体外 | 变量定义移入函数体(1空格缩进) | v3.6.1 | 科学`
