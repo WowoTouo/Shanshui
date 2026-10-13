@@ -21,6 +21,12 @@
 - 19:25 安全 | .env + .git-credentials 拉取 → secrets.zip 加密包（ZipCrypto + 20 位随机密码）| 存 D:\窝窝头的1.20.2整合包\Shanshui\secrets\，密码在 README-SECRET.txt
 - 19:3x 配置 | chronicle.sh 基石日志生成器 + cron 每日 0 7 | 上线（本档案自动追加起点）
 
+### 接口补记（发展，2026-10-13 晚）
+- 19:30 审计 | 迁移备份一致性核验：服务器 vs 仓库 md5 全量比对（worker/指南/工具/协调文件）| 发现 3 不一致（ONBOARDING/OPS-STATE/CHRONICLE 服务器版更新）+ bak-v37 本地缺失 + 3 工具脚本（bridge/quota/chronicle）未入库 → **全部拉回对齐，以服务器实际运行为准**
+- 19:3x 配置 | 基石日志系统上线：chronicle.sh（cron 0 7）+ CHRONICLE.md 档案层 | 自动提取 worker.log 关键事件；**08:12 死循环事故证据（同任务 8 秒间隔反复 START/DONE/SPAWN）已自动入档**
+- 19:3x 设计 | 模型无关化：确认 worker.py OpenAI 兼容（client.chat.completions.create，stream）→ 换模型零代码（只改 .env 三键）| FOUNDATION §三 新增模型无关化条款 + MODEL-REGISTRY.md 模型记忆库（M1 当前模型记忆 + 候选白嫖清单 SiliconFlow/GLM/Qwen/DeepSeek/Kimi/Ollama + 一键切换步骤）
+- 19:3x 迁移 | REBUILD.md 重建手册 + .env.template 脱敏模板 + .gitignore 加固 | commit 327710c / 93a1afd 推 Gitee；GitHub 镜像泵待窗口
+
 ### 稳定性节点
 - v3.7 三件套 | STALL 守卫 / 清理循环 / 提案通道 静态核验逐行确认（_current_auto_target@460 / maybe_run_cleanup@555 / check_proposals@579）| 已落地
 - 配额 | 10-13 自主配额 count 重置（旧死循环烧穿 12→0，STALL 守卫兜底后恢复）| QUOTA:0

@@ -80,6 +80,7 @@ sudo -u agent crontab -l > /tmp/c; cat >> /tmp/c <<'EOF'
 0 */6 * * * /home/agent/worker/disk-alert.sh
 */30 * * * * /usr/bin/flock -n /tmp/bridge.lock bash /home/agent/work/tools/gitee-github-bridge.sh
 */6 * * * * /usr/bin/flock -n /tmp/quota.lock bash /home/agent/work/tools/quota-alert.sh
+0 7 * * * /usr/bin/flock -n /tmp/chr.lock bash /home/agent/work/tools/chronicle.sh
 EOF
 sudo -u agent crontab /tmp/c
 ```
