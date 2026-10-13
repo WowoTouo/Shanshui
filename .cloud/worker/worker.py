@@ -251,6 +251,20 @@ def extract_shell_blocks(reply: str) -> list[str]:
     return [b.strip() for b in blocks if b.strip()]
 
 
+def extract_tool_calls(t):
+ L=chr(60); G=chr(62); Q=chr(34)
+ c=[]
+ pat=L+'function name='+Q+'bash'+Q+G+'(.*?)'+L+'/function'+G
+ for fn in re.findall(pat,t,flags=re.DOTALL):
+  pat2=L+'parameter'+G+'(.*?)'+L+'/parameter'+G
+  q=[x.strip() for x in re.findall(pat2,fn,flags=re.DOTALL) if x.strip()]
+  if q: c.append(q[0] if len(q)==1 else ' && '.join(q))
+ return c
+def strip_tool_calls(t):
+ L=chr(60); G=chr(62); Q=chr(34)
+ t=re.sub(L+'seed:tool_call'+G+'.*?'+L+'/seed:tool_call'+G,'',t,flags=re.DOTALL)
+ t=re.sub(L+'function name='+Q+'bash'+Q+G+'.*?'+L+'/function'+G,'',t,flags=re.DOTALL)
+ return t.strip()
 def execute_shell(cmd: str) -> tuple[bool, str]:
     """第三层防线：黑名单 → 资源围栏 → 隔离执行 → 输出截断"""
     low = cmd.lower()
@@ -420,7 +434,7 @@ def spawn_auto_task():
         return None
     plan = next_plan_item()
     if plan:
-        proj, item = plan
+        proj, item, sig = plan
         name = f'auto-{datetime.now():%Y%m%d-%H%M}-proj-{proj}.md'
         body = f"""# 自主任务：继续 PROJECT {proj}
 model: pro
