@@ -52,6 +52,7 @@ MAIL_SCRIPT = BASE / 'work' / 'tools' / 'send-result-mail.sh'  # v3.7 提案邮�
 WORKER_VERSION = 'v3.7'                     # 版本号（启动日志可见）
 BACKLOG_FILE = BASE / 'research-backlog.md' # v3.6 研究方向队列（总工维护，AI 更新状态）
 AUTONOMY_DIR = BASE / 'logs' / 'autonomy'   # v3.6 自主模式配额计数目录
+STALL_RETRY_AFTER = 6                        # v3.7.2：同一目标连续 STALL 跳过 N 次后放行一次重试（自愈，防永久卡死；60s/次 ≈ 6min）
 
 # 方舟（豆包）OpenAI 兼容端点
 ARK_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
@@ -140,8 +141,15 @@ def redact(text: str) -> str:
 def strip_think_tags(text: str) -> str:
     """剥离方舟 seed 系模型原样回传的思考块（<seed:think_xxx>...</think_xxx>）——
     思考内容不进执行提取与结果文件（2026-10-13 实测：端点把思考块混在 content 里，
-    且思考块内的示例命令有被 extract_shell_blocks 误提取执行的风险）"""
-    return re.sub(r'<seed:think_[^>]*>.*?</think_[^>]*>', '', text, flags=re.DOTALL).strip()
+    且思考块内的示例命令有被 extract_shell_blocks 误提取执行的风险）。
+    v3.7.2 空结果修复：若剥离后整体为空（模型把全部回复塞进思考块，2026-10-13 自检
+    连续两张空 result 实锤），回退抽取思考块内正文——有空输出远胜于空 result。"""
+    stripped = re.sub(r'<seed:think_[^>]*>.*?</think_[^>]*>', '', text, flags=re.DOTALL).strip()
+    if stripped:
+        return stripped
+    inner = re.sub(r'<seed:think_[^>]*>', '', text, flags=re.DOTALL)
+    inner = re.sub(r'</think_[^>]*>', '', inner, flags=re.DOTALL).strip()
+    return inner
 
 
 def strip_draft(text: str) -> tuple[str, str]:
@@ -294,7 +302,8 @@ def strip_tool_calls(t):
  L=chr(60); G=chr(62); Q=chr(34)
  t=re.sub(L+'seed:tool_call'+G+'.*?'+L+'/seed:tool_call'+G,'',t,flags=re.DOTALL|re.IGNORECASE)
  t=re.sub(L+'function name='+Q+'[^'+Q+']*'+Q+G+'.*?'+L+'/function'+G,'',t,flags=re.DOTALL|re.IGNORECASE)
- return t.strip()
+ s=t.strip()
+ return s if s else t.strip() or t
 def execute_shell(cmd: str) -> tuple[bool, str]:
     """第三层防线：黑名单 → 资源围栏 → 隔离执行 → 输出截断"""
     low = cmd.lower()
@@ -385,6 +394,13 @@ def process_task(client, task_path: Path):
     if draft:
         (DONE_DIR / f'{name}.draft.md').write_text(draft, encoding='utf-8')
     reply = final
+    if not reply.strip():
+        # v3.7.2 最终兜底：任何形态（整段思考块/纯空白/纯 tool_call 垃圾）剥离后为空，
+        # 也绝不写空 result——占位 + 指明排查方向（2026-10-13 验收实锤空 result bug）
+        log(f'TASK LLM EMPTY {name} 剥离后为空，写兜底占位')
+        reply = ('【worker 兜底】模型回复经思考块/草稿区/tool_call 剥离后为空。\n'
+                 '可能形态：整段思考块 / 纯空白 / 纯 tool_call 垃圾。请复查端点输出，'
+                 '原始回复长度见同任务上方 TASK LLM OK 日志行。')
     tokens = getattr(usage, 'total_tokens', None) if usage else None
     log(f'TASK LLM OK  {name} | model={model} tokens={tokens if tokens else "?"} reply_len={len(reply)}')
 
@@ -507,13 +523,38 @@ def spawn_auto_task():
         return None
     kind, key, item, sig = tgt
     sig_file = AUTONOMY_DIR / 'last-spawn.sig'
+    stall_file = AUTONOMY_DIR / 'stall-count'
     try:
         last_sig = sig_file.read_text(encoding='utf-8').strip() if sig_file.exists() else ''
     except OSError:
         last_sig = ''
     if last_sig == sig:
-        log(f'AUTO STALL: 目标状态行未变化（AI 无心跳），跳过派发: {item[:60]}')
-        return None
+        # STALL 守卫：目标状态行未变（AI 无心跳）→ 防死循环不狂派；
+        # 但不永久冻结——连续跳过 STALL_RETRY_AFTER 次后放行一次重试（自愈），
+        # 避免上游空结果 / AI 漏改状态行导致自主派发永久卡死（2026-10-13 验收实锤）。
+        try:
+            stalls = int(stall_file.read_text(encoding='utf-8').strip() or '0') if stall_file.exists() else 0
+        except (OSError, ValueError):
+            stalls = 0
+        stalls += 1
+        try:
+            stall_file.write_text(str(stalls), encoding='utf-8')
+        except OSError:
+            pass
+        if stalls < STALL_RETRY_AFTER:
+            log(f'AUTO STALL: 目标状态行未变化（AI 无心跳），跳过派发 [{stalls}/{STALL_RETRY_AFTER}]: {item[:60]}')
+            return None
+        log(f'AUTO STALL 自愈：连续 {stalls} 次无心跳，放行一次重试: {item[:60]}')
+        try:
+            stall_file.write_text('0', encoding='utf-8')
+        except OSError:
+            pass
+    else:
+        # 状态行有变（有心跳/有推进）：重置 stall 计数
+        try:
+            stall_file.write_text('0', encoding='utf-8')
+        except OSError:
+            pass
     if not autonomy_budget_left():
         return None
     stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
