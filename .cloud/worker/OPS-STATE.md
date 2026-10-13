@@ -39,11 +39,15 @@
 - [x] 服务器 ~/Shanshui 切 GitHub remote（已确认 origin fetch+push 生效）
 - [x] 配额重置（2026-10-13 科学 12→0）
 - [ ] GitHub 收口（4e8b887）：本地+服务器两 SSH 公钥待总工登记后补推
-- [ ] v3.7 部署（patch_v37.py 落盘未推；剩 STALL守卫/清理循环/提案通道 3 件）
+- [x] v3.7 部署 + v3.7.2 双bug修复（空结果兜底占位 + STALL自愈重试）；已上线服务器 + 同步仓库 589189e
 - [x] 预算水位监控入板（4.96M/5.5M 快照 + 100万告警阈值，quota-alert 联动）
 - [ ] 白嫖迁移战略：2026-11-12 到期前打包全部工程文件+运行环境上云，到期不续换免费服务器重建（科学牵头，WB 补清单）
 - [ ] ufw 出站白名单批准
 - [ ] ARK Key 季度轮换
+- [ ] 模型层决策：Doubao-Seed-Evolving 在 15k 四层 prompt + 复杂任务下退化为 tool_call/思考块（零正文）；有用产出需换模型或调 prompt（MODEL-REGISTRY 一键换脑）——待总工定
+
+## 部署/变更台账
+- 2026-10-13 21:2x 发展 op=deploy obj=worker.py v3.7.2（总工授权"你帮我配置，我授权你和山水"）：patch_v372.py 4 处锚点补丁（空结果回退抽思考块正文 + process_task 最终兜底占位 / STALL_RETRY_AFTER=6 自愈重试）→ 备份 worker.py.bak-pre-v372 → systemctl restart → 复验（STALL [N/6] 自愈放行实证 21:29/21:34、result 不再空白）→ commit 589189e push gitee。根因：模型层退化（非代码 bug），代码已健壮；有用产出待模型层决策。
 
 ## GitHub SSH 公钥登记（待总工操作）— 2026-10-13 19:2x
 - 用途：登记后服务器/本地即可经 SSH/22 直推 GitHub，收口到 4e8b887（绕开 443 掐断）
