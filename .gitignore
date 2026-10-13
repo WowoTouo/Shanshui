@@ -72,3 +72,6 @@ desktop.ini
 *.env
 !.env.example
 .msmtprc
+.git-credentials
+secrets/
+*.zip
