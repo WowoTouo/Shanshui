@@ -51,12 +51,23 @@
 | 系统 | reboot/shutdown/halt/mount/swapon/umount（内核层 EPERM） |
 | 磁盘 | dd/fdisk/mkfs/parted/格式化/覆写块设备 |
 | 删除 | rm -rf 于 /、/etc、/usr、/var、/boot、/srv、/root、/home/ubuntu（/home/agent 内删除允许） |
-| 凭据 | /etc/shadow、/home/ubuntu/.ssh、任何密钥文件、tccli 配置、云控制台凭据 |
+| 凭据 | /etc/shadow、/home/ubuntu/.ssh、任何密钥文件、tccli 配置、云控制台凭据。**唯一例外：GITHUB_TOKEN**（2026-10-13 用户授权，见 §4A） |
 | 系统配置 | sshd、防火墙规则、系统 crontab、systemd 其他服务、sudoers 白名单外 |
 | 提权 | 白名单外的 sudo；chmod/chown 系统路径 |
 | 数据破坏 | 覆写系统文件、清空他人日志（自己日志走轮转） |
 
 > 边界原则：**能完成任何开发/研究操作；碰不到任何破坏/越权/不可逆操作**。
+
+## 4A. GitHub 同步授权（2026-10-13 用户授权，附三道护栏）
+
+**授权**：服务器 AI 持有 `GITHUB_TOKEN`（/home/agent/.env 的 GITHUB_TOKEN，600 权限），可将研究产出同步到 `github.com/WowoTouo/Shanshui`。这是**唯一**被授权给 AI 的账号级凭据。
+
+**三道护栏（违反 = 授权即刻撤销）**：
+1. **目录纪律**：`git add` 只允许 `memory/`、`.cloud/worker/`、`docs/`、`learnings/`（或等价产物区）；**禁止 add `src/`、`build.gradle`、`gradle/`、`.github/`**——mod 源码/构建定义层由本地与总工控制，AI 只同步记忆与产物。
+2. **留痕审计**：同步 commit message 必须 `[ai] <任务ID/主题> <日期>` 开头；推送前 `git status` 确认只含白名单文件；用户/总工可随时 `git log` 审计。
+3. **环境安全**：token 只在 .env（600）、不回显、不进日志、不进 git、不出现在命令行明文。推送前检查 remote URL 不含 token（用 credential helper 或 clean URL）。
+
+**禁止**：push 到非 `main` 的分支删除操作、force push、改写历史（rebase/amend 远程）、往 src/ 写任何内容、把 token 写入任何文件/日志/结果。仓库被 AI 意外写坏 → 本地有权威副本可强推纠正，但会记一次违规。**同步前必须 `git pull --rebase` 拉最新，避免覆盖他人提交**。
 
 ## 5. 环境地图（服务器）
 
