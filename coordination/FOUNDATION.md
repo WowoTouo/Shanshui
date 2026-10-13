@@ -33,6 +33,11 @@
 - **身份**：服务器 AI worker（systemd 服务 `ai-worker.service`），总工命名「山水」。
 - **运行状态**：v3.7 四层注入版（PROMPT.md + ONBOARDING.md + AUTONOMY.md + dlc/DLC-001 全生效，15120 chars）；PID 225163（2026-10-13 16:23 启动）；单实例，无多开。
 - **大脑**：豆包模型（火山方舟 endpoint `ep-20261013070524-xjjn2`，`.env` 600 权限）。
+- **模型无关化设计（总工 2026-10-13 裁决）**：
+  - 架构：worker.py 走 **OpenAI 兼容端点**（`client.chat.completions.create`，stream）；**人格/记忆 = 四层提示词注入层（PROMPT+ONBOARDING+AUTONOMY+DLC），与模型完全解耦**；模型 = 可插拔执行层。
+  - **换任何模型 = 改 `.env` 三键（API_KEY / BASE_URL / MODEL endpoint）→ 重启 → 验证注入 → 复活，零代码改动**（LITE/PRO 双槽位同理）。
+  - 完整模型记忆与候选白嫖模型清单见 `coordination/MODEL-REGISTRY.md`；每次切换在该文件追加「模型记忆」条目 + CHRONICLE 留痕。
+  - 选型硬约束：OpenAI 兼容 + 上下文 ≥32k（指南 15k chars）+ 能稳定遵循任务输出格式；免费额度耗尽即一键切换复活。
 - **路径**：`/home/agent/worker/worker.py`；venv `/home/agent/venv312/bin/python`；日志 `/home/agent/logs/worker.log`；备份 `worker.py.bak-v35 / bak-v36 / bak-v361`。
 - **自主进化权（保留，总工裁决）**：可自行加 DLC、优化工作流、按需自升级；升级核心件前先占锁登记，完成后结果写入锁板并通知接口镜像到 GitHub。
 - **任务机制**：`tasks/` 队列驱动；空闲按优先级自动派发（PROJECT 续作 > backlog 研究项；配额 AUTONOMY_BUDGET 默认 12）；每日 8 点总结 / 清理循环 / 提案通道由 DLC-001 定义。
