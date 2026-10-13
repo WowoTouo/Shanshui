@@ -15,6 +15,9 @@
   - 熔断：连续 5 次 API 失败 → 休眠 30 分钟（方舟挂了就别折腾）
   - v3.5 开机记忆：启动时读 /home/agent/ONBOARDING.md（入职指南）拼进 system prompt；
     缺失/读失败降级为内置 prompt，worker 照常启动不崩
+  - v3.6 自主模式：启动时增读 /home/agent/AUTONOMY.md（自主宪章）；tasks/ 空时按优先级
+    自动派发（PROJECT 续作 > backlog 研究项，每日配额 AUTONOMY_BUDGET 默认 12）；
+    draft 两区协议：<draft> 草稿区剥离存档 done/<任务>.draft.md，正式区才进 result
   - v1 只做「读任务 → AI 产出文本」；执行权（shell 代码块）留待 CI 兜底后开
 
 任务文件格式（tasks/*.md）：
@@ -40,6 +43,9 @@ LOG_FILE = BASE / 'logs' / 'worker.log'
 ENV_FILE = BASE / '.env'
 WORK_DIR = BASE / 'work'          # 所有 shell 命令的 cwd 围栏（main() 里创建）
 ONBOARDING_FILE = BASE / 'ONBOARDING.md'   # v3.5 开机记忆：入职指南（启动时读入 system prompt）
+AUTONOMY_FILE = BASE / 'AUTONOMY.md'        # v3.6 自主宪章（与 ONBOARDING 一并注入）
+BACKLOG_FILE = BASE / 'research-backlog.md' # v3.6 研究方向队列（总工维护，AI 更新状态）
+AUTONOMY_DIR = BASE / 'logs' / 'autonomy'   # v3.6 自主模式配额计数目录
 
 # 方舟（豆包）OpenAI 兼容端点
 ARK_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
@@ -131,6 +137,15 @@ def strip_think_tags(text: str) -> str:
     且思考块内的示例命令有被 extract_shell_blocks 误提取执行的风险）"""
     return re.sub(r'<seed:think_[^>]*>.*?</think_[^>]*>', '', text, flags=re.DOTALL).strip()
 
+
+def strip_draft(text: str) -> tuple[str, str]:
+    """v3.6 机器码协议（AUTONOMY §2）：剥离 <draft>...</draft> 压缩思考区。
+    返回 (正式结论区, 草稿区文本)。无标记 → (全文, '')——没写 draft 区的任务全文即正式区。
+    草稿区不进 result、不进执行提取（里面的伪命令不执行），仅存档 done/<任务>.draft.md。"""
+    drafts = re.findall(r'<draft>(.*?)</draft>', text, flags=re.DOTALL)
+    final = re.sub(r'<draft>.*?</draft>', '', text, flags=re.DOTALL).strip()
+    return final, '\n\n---\n\n'.join(d.strip() for d in drafts if d.strip())
+
 SYSTEM_PROMPT = """你是「山水工程 Shanshui」项目的专职 AI 代理，7×24 无人值守运行。
 
 【项目背景】
@@ -153,34 +168,47 @@ Minecraft 1.20.2 Fabric mod「山水工程·超级地形调度器」：UltraTerr
 简体中文、结构化、硬核直球；不确定就明确说不确定，宁可少做不可做错。每个任务结束时用一句话总结「做了什么 + 结论如何」。"""
 
 
-# ===== v3.5 开机记忆：入职指南 ONBOARDING.md =====
+# ===== v3.5/v3.6 开机记忆：ONBOARDING.md + AUTONOMY.md =====
 # 服务器 AI 的「失忆保险」：崩溃重启 / 每日重生 / 换模型之后，醒来第一件事
-# 就是知道自己是谁、边界在哪、当前研究什么。启动时读一次拼进 system
+# 就是知道自己是谁、边界在哪、怎么自主干活。启动时读一次拼进 system
 # prompt，进程内固定——system 保持静态，上下文缓存仍命中。
 
 
-def load_onboarding() -> str:
-    """读取 /home/agent/ONBOARDING.md 全文（v3.5 开机记忆）。
-    缺失 / 为空 / 读失败 → 返回 ''，由调用方降级为内置 system prompt，worker 不许崩。
-    本函数不写日志（本地单测无日志目录），加载结果由 main() 记录。"""
+def _read_guide(path) -> str:
+    """安全读指南文件：存在且非空 → 全文；缺失/读失败 → ''（不抛，不许崩）。"""
     try:
-        if ONBOARDING_FILE.is_file():
-            return ONBOARDING_FILE.read_text(encoding='utf-8').strip()
+        if path.is_file():
+            return path.read_text(encoding='utf-8').strip()
     except Exception:
         pass
     return ''
 
 
+def load_onboarding() -> str:
+    """读取 ONBOARDING.md 全文（v3.5 开机记忆）。
+    本函数不写日志（本地单测无日志目录），加载结果由 main() 记录。"""
+    return _read_guide(ONBOARDING_FILE)
+
+
+def load_guides() -> tuple[str, int]:
+    """v3.6：读取全部开机记忆（ONBOARDING.md + AUTONOMY.md）并拼接。
+    任一缺失/读失败安全跳过（降级启动，不崩）。返回 (拼接文本, 总字符数)。"""
+    parts = [p for p in (load_onboarding(), _read_guide(AUTONOMY_FILE)) if p]
+    if not parts:
+        return '', 0
+    return '\n\n---\n\n'.join(parts), sum(len(p) for p in parts)
+
+
 def build_system_prompt() -> tuple[str, int]:
-    """v3.5：内置 system prompt + ONBOARDING 开机记忆（若加载成功）。
-    返回 (生效 prompt, ONBOARDING 字符数；0 = 未加载，走降级)。"""
-    ob = load_onboarding()
-    if ob:
-        return f'{SYSTEM_PROMPT}\n\n---\n\n{ob}', len(ob)
+    """v3.6：内置 system prompt + 开机记忆（若加载成功）。
+    返回 (生效 prompt, 指南字符数；0 = 未加载，走降级)。"""
+    guides, n = load_guides()
+    if guides:
+        return f'{SYSTEM_PROMPT}\n\n---\n\n{guides}', n
     return SYSTEM_PROMPT, 0
 
 
-# 进程内生效的 system prompt：import 期为内置版；main() 启动时刷新为含 ONBOARDING 版
+# 进程内生效的 system prompt：import 期为内置版；main() 启动时刷新为含开机记忆版
 SYSTEM_PROMPT_EFFECTIVE = SYSTEM_PROMPT
 
 
@@ -288,6 +316,10 @@ def process_task(client, task_path: Path):
     ])
     reply = redact(reply)   # 出口脱敏：AI 回复先过打码，再进执行/落盘流程
     reply = strip_think_tags(reply)   # v3.3：剥离思考块，防伪命令进执行提取（聚合后执行，顺序不变）
+    final, draft = strip_draft(reply)   # v3.6：机器码协议——草稿区剥离存档，正式区才进 result
+    if draft:
+        (DONE_DIR / f'{name}.draft.md').write_text(draft, encoding='utf-8')
+    reply = final
     tokens = getattr(usage, 'total_tokens', None) if usage else None
     log(f'TASK LLM OK  {name} | model={model} tokens={tokens if tokens else "?"}')
 
@@ -315,19 +347,139 @@ def process_task(client, task_path: Path):
     log(f'TASK DONE    {name} -> done/{name}.result.md')
 
 
+# ===== v3.6 自主模式：空闲生产循环（AUTONOMY §7）=====
+# tasks/ 为空时不空转：PROJECT 续作（work/*/PLAN.md 未勾选项）> backlog 研究项，
+# 由 worker 自动派发 tasks/auto-*（同一队列、无状态可续、每日配额限额）。
+
+
+def autonomy_budget_left() -> bool:
+    """今日自动派发配额是否还有（.env AUTONOMY_BUDGET，默认 12；0 = 关闭自主模式）。"""
+    try:
+        budget = int(os.environ.get('AUTONOMY_BUDGET', '12'))
+    except ValueError:
+        budget = 12
+    if budget <= 0:
+        return False
+    try:
+        AUTONOMY_DIR.mkdir(exist_ok=True)
+        counter = AUTONOMY_DIR / f'{datetime.now():%Y-%m-%d}.count'
+        used = int(counter.read_text(encoding='utf-8').strip() or '0') if counter.exists() else 0
+    except Exception:
+        return True   # 计数故障不堵死生产，保守放行
+    return used < budget
+
+
+def autonomy_tick():
+    """记一次自动派发（计数写入失败不堵生产）。"""
+    try:
+        AUTONOMY_DIR.mkdir(exist_ok=True)
+        counter = AUTONOMY_DIR / f'{datetime.now():%Y-%m-%d}.count'
+        used = int(counter.read_text(encoding='utf-8').strip() or '0') if counter.exists() else 0
+        counter.write_text(str(used + 1), encoding='utf-8')
+    except Exception:
+        pass
+
+
+def next_plan_item():
+    """扫描 work/*/PLAN.md，返回 (项目名, 第一个未勾选项)（AUTONOMY §3 状态机）。
+    复选框语法：- [ ] 未完成 / - [x] 完成 / - [!] 阻塞。无进行中项目 → None。"""
+    try:
+        plans = sorted(BASE.glob('work/*/PLAN.md'), key=lambda p: p.stat().st_mtime)
+    except Exception:
+        return None
+    for plan in plans:
+        try:
+            for line in plan.read_text(encoding='utf-8').splitlines():
+                m = re.match(r'^\s*-\s*\[ \]\s*(.+)$', line)
+                if m:
+                    return plan.parent.name, m.group(1).strip()
+        except Exception:
+            continue
+    return None
+
+
+def next_backlog_item():
+    """解析 research-backlog.md，返回第一个未完成项（[ ]/[~]/[!]）文本；尽/缺 → None。"""
+    text = _read_guide(BACKLOG_FILE)
+    if not text:
+        return None
+    for line in text.splitlines():
+        m = re.match(r'^\s*\d+\.\s*\[([ ~!✔])\]\s*(.+)$', line)
+        if m and m.group(1) in (' ', '~', '!'):
+            return m.group(2).strip()
+    return None
+
+
+def spawn_auto_task():
+    """v3.6 自动派发（AUTONOMY §7 优先级）：PROJECT 续作 > backlog 研究项。
+    写 tasks/auto-<时间戳>-<slug>.md，占用一次配额。无条件可派 → None（调用方 sleep）。"""
+    if not autonomy_budget_left():
+        return None
+    plan = next_plan_item()
+    if plan:
+        proj, item = plan
+        name = f'auto-{datetime.now():%Y%m%d-%H%M}-proj-{proj}.md'
+        body = f"""# 自主任务：继续 PROJECT {proj}
+model: pro
+
+## 目标
+完成 work/{proj}/PLAN.md 中的下一个子任务：{item}
+
+## 上下文
+- 先读 work/{proj}/PLAN.md 全文，确认当前进度（状态即记忆）
+- 先 grep work/playbooks/INDEX.md 找相关经验（shell 零成本，命中先读）
+- 研究结论落 work/learnings/，解决的问题落 work/playbooks/
+
+## 边界
+只做本子任务；完成后用 shell 块把 PLAN.md 对应行勾选为 - [x]；
+卡住标 - [!] 并记录原因（等总工决策，不空转）。
+
+## 期望产出
+【结论】段置顶（≤3 句）+ 证据路径；≤600 字。
+"""
+    else:
+        item = next_backlog_item()
+        if not item:
+            return None
+        slug = re.sub(r'[^\w一-龥]+', '-', item)[:40].strip('-') or 'research'
+        name = f'auto-{datetime.now():%Y%m%d-%H%M}-{slug}.md'
+        body = f"""# 自主研究任务：{item}
+model: pro
+
+## 目标
+{item}
+
+## 上下文
+- 先 grep work/playbooks/INDEX.md 与 work/learnings/ 找相关沉淀（shell 零成本）
+- 复杂问题用任务链：本轮只做侦察/验证，分析结论留给后续 auto 任务
+- 参考 ONBOARDING §8 研究主题速览
+
+## 边界
+只做本 backlog 项，不扩大 scope；完成后用 shell 块更新 research-backlog.md 状态行
+（[✔] 完成 / [!] 阻塞+原因）；解决的**新**问题必须写 work/playbooks/ 条目 + INDEX。
+
+## 期望产出
+【结论】段置顶（≤3 句）+ 证据（文件路径/命令输出/引用）；≤600 字。
+"""
+    (TASKS_DIR / name).write_text(body, encoding='utf-8')
+    autonomy_tick()
+    log(f'AUTO SPAWN {name}')
+    return name
+
+
 def main():
     TASKS_DIR.mkdir(exist_ok=True)
     DONE_DIR.mkdir(exist_ok=True)
     WORK_DIR.mkdir(exist_ok=True)
     load_env()
 
-    # v3.5 开机记忆：ONBOARDING.md 全文拼进 system prompt（只读一次，进程内固定）
+    # v3.5/v3.6 开机记忆：ONBOARDING.md + AUTONOMY.md 拼进 system prompt（只读一次，进程内固定）
     global SYSTEM_PROMPT_EFFECTIVE
-    SYSTEM_PROMPT_EFFECTIVE, _ob_len = build_system_prompt()
-    if _ob_len:
-        log(f'ONBOARDING loaded ({_ob_len} chars) -> system prompt（开机记忆生效）')
+    SYSTEM_PROMPT_EFFECTIVE, _guide_len = build_system_prompt()
+    if _guide_len:
+        log(f'GUIDES loaded ({_guide_len} chars) -> system prompt（开机记忆生效）')
     else:
-        log('ONBOARDING missing/empty -> fallback builtin system prompt（降级启动）')
+        log('GUIDES missing/empty -> fallback builtin system prompt（降级启动）')
 
     if not os.environ.get('ARK_API_KEY'):
         log('WARN: ARK_API_KEY 未配置，worker 空转等待（填好 ~/.env 后自动生效）')
@@ -348,6 +500,9 @@ def main():
                 continue
 
             if not tasks:
+                # v3.6 自主模式：不空转，按优先级自动派发（PROJECT 续作 > backlog 研究项）
+                if spawn_auto_task():
+                    continue   # 下一轮迭代立即领取处理
                 time.sleep(60)
                 continue
 

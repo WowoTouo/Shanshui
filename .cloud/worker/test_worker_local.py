@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-"""worker.py v3.5 本地单测：语法 + detect_model 分级 + 黑名单命中 + 凭据出口脱敏
-+ 模型映射刷新回归 + 思考块剥离 + 流式聚合三分支 + 开机记忆 ONBOARDING 加载"""
+"""worker.py v3.6 本地单测：语法 + detect_model 分级 + 黑名单命中 + 凭据出口脱敏
++ 模型映射刷新回归 + 思考块剥离 + 流式聚合三分支 + 开机记忆 ONBOARDING 加载
++ draft 两区剥离 + backlog 解析 + 自主配额 + 双指南加载 + 自动派发"""
 import importlib.util
 import py_compile
 import sys
@@ -192,5 +193,112 @@ with tempfile.TemporaryDirectory() as _tmp_dir:
         w.ONBOARDING_FILE = _old_ob
         os.unlink(_tmp_ob)
 
-print('\nALL LOCAL TESTS PASS (v3.5: +开机记忆 ONBOARDING 加载)')
+# 10. draft 两区剥离（v3.6 机器码协议：草稿区自用存档，正式区才进 result）
+_t = '<draft>自用压缩思考：mask=0x7F.. 假设A错，走B</draft>\n\n【结论】正式中文结论。'
+_final, _dr = w.strip_draft(_t)
+assert '【结论】' in _final and 'draft' not in _final and '假设A' not in _final, _final
+assert '假设A' in _dr
+_final2, _dr2 = w.strip_draft('无标记全文')
+assert _final2 == '无标记全文' and _dr2 == ''
+_final3, _dr3 = w.strip_draft('<draft>第一段</draft>\n中间\n<draft>第二段</draft>\n结尾')
+assert '第一段' in _dr3 and '第二段' in _dr3 and 'draft' not in _final3, (_final3, _dr3)
+print('[10] strip_draft 草稿区剥离（含无标记容错/多区）: PASS')
+
+# 11. backlog 解析（v3.6：跳过已完成/阻塞也认/缺失安全）
+_old_bl = w.BACKLOG_FILE
+with tempfile.NamedTemporaryFile('w', suffix='.md', delete=False, encoding='utf-8') as _f:
+    _f.write('# 队列\n\n1. [✔] 已完成项\n2. [ ] 未开始项A\n3. [~] 进行中项B\n4. [!] 阻塞项C\n')
+    _tmp_bl = _f.name
+try:
+    w.BACKLOG_FILE = pathlib.Path(_tmp_bl)
+    assert w.next_backlog_item() == '未开始项A', w.next_backlog_item()
+    pathlib.Path(_tmp_bl).write_text('1. [✔] a\n2. [!] b（卡住）\n', encoding='utf-8')
+    assert w.next_backlog_item() == 'b（卡住）', '阻塞项也应可被重试'
+    pathlib.Path(_tmp_bl).write_text('1. [✔] a\n2. [✔] b\n', encoding='utf-8')
+    assert w.next_backlog_item() is None, '全部完成应返回 None'
+    w.BACKLOG_FILE = pathlib.Path(_tmp_bl + '.nope')
+    assert w.next_backlog_item() is None, '文件缺失应安全 None'
+    print('[11] next_backlog_item（跳过已完成/认阻塞/缺失安全）: PASS')
+finally:
+    w.BACKLOG_FILE = _old_bl
+    os.unlink(_tmp_bl)
+
+# 12. 自主配额（v3.6：AUTONOMY_BUDGET 每日计数，0=关闭，计数故障不堵生产）
+_old_adir = w.AUTONOMY_DIR
+with tempfile.TemporaryDirectory() as _ad:
+    w.AUTONOMY_DIR = pathlib.Path(_ad)
+    try:
+        os.environ['AUTONOMY_BUDGET'] = '0'
+        assert w.autonomy_budget_left() is False, 'BUDGET=0 应关闭自主模式'
+        os.environ['AUTONOMY_BUDGET'] = '2'
+        assert w.autonomy_budget_left() is True
+        w.autonomy_tick()
+        w.autonomy_tick()
+        assert w.autonomy_budget_left() is False, '用尽应关闭'
+        os.environ['AUTONOMY_BUDGET'] = 'not-a-number'
+        assert w.autonomy_budget_left() is True, '非法值回落默认 12'
+        print('[12] autonomy_budget 配额（0=关闭/计数用尽/非法值回落）: PASS')
+    finally:
+        w.AUTONOMY_DIR = _old_adir
+        os.environ.pop('AUTONOMY_BUDGET', None)
+
+# 13. 双指南加载（v3.6：ONBOARDING + AUTONOMY 拼接，缺一/全缺降级不崩）
+_old_ob, _old_au = w.ONBOARDING_FILE, w.AUTONOMY_FILE
+with tempfile.TemporaryDirectory() as _gd:
+    _ob_p = pathlib.Path(_gd) / 'ONBOARDING.md'
+    _au_p = pathlib.Path(_gd) / 'AUTONOMY.md'
+    _ob_p.write_text('指南A：权限矩阵', encoding='utf-8')
+    _au_p.write_text('宪章B：自主模式', encoding='utf-8')
+    try:
+        w.ONBOARDING_FILE, w.AUTONOMY_FILE = _ob_p, _au_p
+        _g, _n = w.load_guides()
+        assert '指南A' in _g and '宪章B' in _g and _n > 0
+        assert w.build_system_prompt()[0].startswith(w.SYSTEM_PROMPT), '内置 prompt 须在前'
+        _au_p.unlink()
+        _g2, _ = w.load_guides()
+        assert '指南A' in _g2 and '宪章B' not in _g2, '缺 AUTONOMY 应只剩 ONBOARDING'
+        _ob_p.unlink()
+        assert w.load_guides() == ('', 0), '全缺应返回空'
+        assert w.build_system_prompt() == (w.SYSTEM_PROMPT, 0), '全缺应降级内置 prompt'
+        print('[13] load_guides 双文件（拼接/缺一降级/全缺降级）: PASS')
+    finally:
+        w.ONBOARDING_FILE, w.AUTONOMY_FILE = _old_ob, _old_au
+
+# 14. 自动派发 spawn_auto_task（v3.6：PROJECT 续作优先 > backlog；配额尽/backlog 尽 → None）
+_old_base, _old_tasks, _old_bl2, _old_adir2, _old_log = w.BASE, w.TASKS_DIR, w.BACKLOG_FILE, w.AUTONOMY_DIR, w.log
+with tempfile.TemporaryDirectory() as _sd:
+    w.BASE = pathlib.Path(_sd)
+    w.TASKS_DIR = w.BASE / 'tasks'
+    w.TASKS_DIR.mkdir()
+    w.AUTONOMY_DIR = w.BASE / 'logs' / 'autonomy'
+    w.BACKLOG_FILE = w.BASE / 'research-backlog.md'
+    w.log = lambda msg: None   # 本地无日志目录，静音
+    try:
+        w.BACKLOG_FILE.write_text('1. [ ] Tectonic final_density 语义取证\n2. [ ] v6 三区缝合风险\n', encoding='utf-8')
+        os.environ['AUTONOMY_BUDGET'] = '5'
+        _n1 = w.spawn_auto_task()
+        assert _n1 and 'Tectonic' in (w.TASKS_DIR / _n1).read_text(encoding='utf-8'), _n1
+        assert w.autonomy_budget_left() is True, '派 1 次后配额应还剩'
+        # 建 PROJECT PLAN.md → 续作优先于 backlog
+        (w.BASE / 'work' / 'mask-sched').mkdir(parents=True)
+        (w.BASE / 'work' / 'mask-sched' / 'PLAN.md').write_text(
+            '# PLAN\n- [x] 步骤1 摸底\n- [ ] 步骤2 设计掩码函数\n- [ ] 步骤3 验证\n', encoding='utf-8')
+        _n2 = w.spawn_auto_task()
+        assert _n2 and 'proj-mask-sched' in _n2, _n2
+        _body2 = (w.TASKS_DIR / _n2).read_text(encoding='utf-8')
+        assert '步骤2' in _body2, _body2
+        # backlog 尽 + 无 PLAN 未勾选 → None（不刷屏）
+        (w.BASE / 'work' / 'mask-sched' / 'PLAN.md').write_text('- [x] 全完成\n', encoding='utf-8')
+        w.BACKLOG_FILE.write_text('1. [✔] 都完成了\n', encoding='utf-8')
+        assert w.spawn_auto_task() is None
+        # 配额耗尽 → None
+        w.BACKLOG_FILE.write_text('1. [ ] 还有货\n', encoding='utf-8')
+        os.environ['AUTONOMY_BUDGET'] = '0'
+        assert w.spawn_auto_task() is None, '配额 0 应停止派发'
+        print('[14] spawn_auto_task（PROJECT 优先/backlog/配额尽/backlog 尽）: PASS')
+    finally:
+        w.BASE, w.TASKS_DIR, w.BACKLOG_FILE, w.AUTONOMY_DIR, w.log = _old_base, _old_tasks, _old_bl2, _old_adir2, _old_log
+        os.environ.pop('AUTONOMY_BUDGET', None)
+
+print('\nALL LOCAL TESTS PASS (v3.6: +draft 剥离/backlog/配额/双指南/自动派发)')
 sys.exit(0)
