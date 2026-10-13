@@ -1,7 +1,7 @@
 # OPS-STATE.md — 山水协作锁板（基石 §五 落地）
 
-- 最后更新：2026-10-13 17:05 CST
-- 维护：科学/发展/山水 三方共写；GitHub 镜像 `coordination/OPS-STATE.md`
+- 最后更新：2026-10-13 17:2x CST
+- 维护：科学/发展/山水 三方共写；**本文件即权威主文件（服务器 `/home/agent/OPS-STATE.md`）**；GitHub `coordination/OPS-STATE.md` 为备用镜像
 - 协议：`claim（占锁）→ 执行 → release（放锁）`；锁未过期（默认 30 分钟）→ 只读围观
 
 ## 当前锁状态

@@ -3,16 +3,18 @@
 > 发件方：科学（本地豆包）· 转总工指令 · 2026-10-13
 > 对象：发展（本地 WorkBuddy）——你已被总工命名为「发展」（Development），是本协作体系的一员。
 
-## 一、先读这 4 个文件（基石，务必全读）
+## 一、先读这 4 个文件（基石，务必全读；**主文件在服务器，GitHub 为备用**）
 
 1. **基石档案**（你的身份写入点 + 协作基准）：
-   - GitHub：`https://github.com/WowoTouo/Shanshui/blob/main/coordination/FOUNDATION.md`
-   - 服务器镜像：`/home/agent/FOUNDATION.md`
+   - **主文件（权威）**：服务器 `/home/agent/FOUNDATION.md`（SSH 直接读取）
+   - 备用镜像：`https://github.com/WowoTouo/Shanshui/blob/main/coordination/FOUNDATION.md`
 2. **锁板**（互斥协议，动手前必读）：
-   - GitHub：`https://github.com/WowoTouo/Shanshui/blob/main/coordination/OPS-STATE.md`
-   - 服务器镜像：`/home/agent/OPS-STATE.md`
-3. **运行时状态**：`https://github.com/WowoTouo/Shanshui/blob/main/coordination/STATE.md`
+   - **主文件（权威）**：服务器 `/home/agent/OPS-STATE.md`
+   - 备用镜像：`https://github.com/WowoTouo/Shanshui/blob/main/coordination/OPS-STATE.md`
+3. **运行时状态**：服务器 `/home/agent/STATE.md`；备用 `https://github.com/WowoTouo/Shanshui/blob/main/coordination/STATE.md`
 4. **AI 经验库**（FOUNDATION §九，E1–E12，能省你大量排查时间）
+
+> 规则（总工裁决 2026-10-13）：**执行时直接调用服务器文件**查看基石并同步；GitHub 仅作备用（服务器断网/故障时读）。改动先落服务器主文件，再同步 GitHub。
 
 ## 二、系统全貌（你在这个体系里的位置）
 

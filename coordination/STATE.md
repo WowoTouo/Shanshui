@@ -1,8 +1,8 @@
 # Shanshui 全局协调状态（STATE）
 
-- 最后更新：2026-10-13 16:40 CST
-- 维护者：豆包（Make 角色，唯一同步桥）
-- 唯一事实源：本文件（GitHub 仓库 `coordination/STATE.md`）；云端镜像由豆包单向同步至 WorkBuddy 空间
+- 最后更新：2026-10-13 17:2x CST
+- 维护者：科学（Make 角色，同步桥）+ 发展（协作）
+- **权威主文件：服务器 `/home/agent/STATE.md`**（总工裁决：基石主文件首先存在于服务器；执行时 SSH 读服务器文件）；GitHub `coordination/STATE.md` 为备用镜像；WorkBuddy 空间为云端归档
 
 ## 一、三方分工（2026-10-13 修正版：保留 AI 自主进化）
 
