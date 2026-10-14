@@ -41,7 +41,8 @@ sudo -u agent git clone https://gitee.com/zhong-li-of/Shanshui.git Shanshui
 | `worker.py` `run_worker.sh` `summary.sh` `disk-alert.sh` `test_worker_local.py` | `/home/agent/worker/` | 主程序+常驻脚本（cron 06:00 summary / */6 disk 在此调）|
 | `tools/chronicle.sh` `tools/cleanup.sh` `tools/daily-card.sh` `tools/gitee-github-bridge.sh` `tools/quota-alert.sh` `tools/send-result-mail.sh` `tools/verify-build.sh` | `/home/agent/work/tools/`（chmod 755）| 辅助工具（bridge/quota/chronicle cron 在此调）|
 | `PROMPT.md` `ONBOARDING.md` `AUTONOMY.md` `DLCOPS.md` | `/home/agent/` | 四层注入指南 |
-| `dlc/DLC-001-daily-operations.md` | `/home/agent/dlc/` | DLC 扩展层 |
+| `dlc/DLC-001-daily-operations.md` `dlc/DLC-002-external-integration.md` `dlc/DLC-003-autonomous-self-iteration.md` `dlc/DLC-004-auto-research-pipeline.md` | `/home/agent/dlc/` | DLC 扩展层（四张卡） |
+| `tools/push-wecom.py` `tools/preflight-check.sh` `tools/gen-runbook.sh` | `/home/agent/work/tools/`（chmod 755）| 企微推送 / 启动前对比 / 运行指南生成 |
 | `conf/ai-worker.service` | `/etc/systemd/system/` | systemd 服务（含 CPUQuota=80%）|
 | `conf/agent-sudoers` | `/etc/sudoers.d/agent-worker`（visudo -c 校验后 0440）| worker 免密 sudo 白名单 |
 | `conf/ai-worker-logrotate.conf` | `/etc/logrotate.d/ai-worker` | 日志轮转 |
